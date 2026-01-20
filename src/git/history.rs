@@ -121,4 +121,88 @@ R095	tools/repo2/.baum/manifest.yaml	research/repo2/.baum/manifest.yaml
         assert_eq!(moves[1].new_path, "research/repo2");
         assert_eq!(moves[1].similarity, 95);
     }
+
+    // Edge case tests
+
+    #[test]
+    fn test_parse_move_ignores_non_rename() {
+        // Should ignore A (added), D (deleted), M (modified) lines
+        let output = r#"A	tools/new/.baum/manifest.yaml
+D	old/deleted/.baum/manifest.yaml
+M	modified/repo/.baum/manifest.yaml
+R100	tools/repo/.baum/manifest.yaml	admin/repo/.baum/manifest.yaml
+"#;
+        let moves = parse_move_output(output).unwrap();
+
+        // Only the R line should produce a move
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].old_path, "tools/repo");
+        assert_eq!(moves[0].new_path, "admin/repo");
+    }
+
+    #[test]
+    fn test_parse_move_nested_containers() {
+        // Deep nested paths should work correctly
+        let output = "R100\tresearch/25-project/deep/nested/.baum/manifest.yaml\tresearch/26-project/even/deeper/nested/.baum/manifest.yaml\n";
+        let moves = parse_move_output(output).unwrap();
+
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].old_path, "research/25-project/deep/nested");
+        assert_eq!(moves[0].new_path, "research/26-project/even/deeper/nested");
+    }
+
+    #[test]
+    fn test_parse_move_similarity_scores() {
+        // Various similarity scores should be parsed correctly
+        let output = r#"R100	path1/.baum/manifest.yaml	dest1/.baum/manifest.yaml
+R095	path2/.baum/manifest.yaml	dest2/.baum/manifest.yaml
+R080	path3/.baum/manifest.yaml	dest3/.baum/manifest.yaml
+R050	path4/.baum/manifest.yaml	dest4/.baum/manifest.yaml
+"#;
+        let moves = parse_move_output(output).unwrap();
+
+        assert_eq!(moves.len(), 4);
+        assert_eq!(moves[0].similarity, 100);
+        assert_eq!(moves[1].similarity, 95);
+        assert_eq!(moves[2].similarity, 80);
+        assert_eq!(moves[3].similarity, 50);
+    }
+
+    #[test]
+    fn test_parse_move_empty_output() {
+        // Empty output should return empty vec
+        let moves = parse_move_output("").unwrap();
+        assert!(moves.is_empty());
+    }
+
+    #[test]
+    fn test_parse_move_whitespace_only() {
+        // Whitespace-only output should return empty vec
+        let moves = parse_move_output("   \n\t\n   ").unwrap();
+        assert!(moves.is_empty());
+    }
+
+    #[test]
+    fn test_parse_move_malformed_line() {
+        // Lines with wrong number of fields should be skipped
+        let output = r#"R100	only_one_field
+R100	tools/repo/.baum/manifest.yaml	admin/repo/.baum/manifest.yaml
+R100	too	many	fields	here
+"#;
+        let moves = parse_move_output(output).unwrap();
+
+        // Only the valid line should produce a move
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].old_path, "tools/repo");
+    }
+
+    #[test]
+    fn test_parse_move_invalid_similarity_defaults_to_100() {
+        // Invalid similarity score should default to 100
+        let output = "Rxyz\ttools/repo/.baum/manifest.yaml\tadmin/repo/.baum/manifest.yaml\n";
+        let moves = parse_move_output(output).unwrap();
+
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].similarity, 100); // Default
+    }
 }

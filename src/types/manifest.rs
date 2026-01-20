@@ -212,4 +212,97 @@ mod tests {
         assert_eq!(parsed.worktrees.len(), 2);
         assert_eq!(parsed.worktrees[0].branch, "main");
     }
+
+    // Edge case tests for alias resolution
+
+    #[test]
+    fn test_resolve_alias_nonexistent() {
+        // Alias that doesn't exist should return None
+        let manifest = Manifest::default();
+        assert_eq!(manifest.resolve_alias("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_resolve_alias_collision_returns_first_match() {
+        // When same alias is in multiple repos, returns first match found
+        // (HashMap iteration order is non-deterministic, but should still return something)
+        let mut manifest = Manifest::default();
+        manifest.repos.insert(
+            "github.com/user/repo1".to_string(),
+            RepoEntry {
+                aliases: vec!["shared".to_string()],
+                ..Default::default()
+            },
+        );
+        manifest.repos.insert(
+            "github.com/user/repo2".to_string(),
+            RepoEntry {
+                aliases: vec!["shared".to_string()],
+                ..Default::default()
+            },
+        );
+
+        // Should resolve to one of them
+        let resolved = manifest.resolve_alias("shared");
+        assert!(resolved.is_some());
+        let resolved_id = resolved.unwrap();
+        assert!(
+            resolved_id == "github.com/user/repo1" || resolved_id == "github.com/user/repo2"
+        );
+    }
+
+    #[test]
+    fn test_manifest_empty_repos() {
+        // Empty repos map should work fine
+        let yaml = "repos: {}";
+        let manifest: Manifest = serde_yml::from_str(yaml).unwrap();
+        assert!(manifest.repos.is_empty());
+        assert!(!manifest.has_repo("anything"));
+    }
+
+    #[test]
+    fn test_manifest_missing_repos_key() {
+        // Missing repos key should use default (empty)
+        let yaml = "";
+        let manifest: Manifest = serde_yml::from_str(yaml).unwrap();
+        assert!(manifest.repos.is_empty());
+    }
+
+    #[test]
+    fn test_has_repo_with_direct_match() {
+        let mut manifest = Manifest::default();
+        manifest.repos.insert(
+            "github.com/user/repo".to_string(),
+            RepoEntry::default(),
+        );
+
+        assert!(manifest.has_repo("github.com/user/repo"));
+        assert!(!manifest.has_repo("github.com/other/repo"));
+    }
+
+    #[test]
+    fn test_resolve_alias_prefers_direct_repo_id() {
+        // If the input is both a repo ID and an alias, prefer repo ID
+        let mut manifest = Manifest::default();
+        manifest.repos.insert(
+            "github.com/user/dotfiles".to_string(),
+            RepoEntry {
+                aliases: vec!["dots".to_string()],
+                ..Default::default()
+            },
+        );
+        manifest.repos.insert(
+            "github.com/other/repo".to_string(),
+            RepoEntry {
+                aliases: vec!["github.com/user/dotfiles".to_string()], // Weird but possible
+                ..Default::default()
+            },
+        );
+
+        // Direct repo ID takes precedence
+        assert_eq!(
+            manifest.resolve_alias("github.com/user/dotfiles"),
+            Some("github.com/user/dotfiles")
+        );
+    }
 }

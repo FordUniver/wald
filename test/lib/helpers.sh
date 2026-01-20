@@ -107,25 +107,64 @@ EOF
 # Create bare repo with realistic commit history
 # Usage: create_bare_repo <repo_id> [with_commits]
 #
-# Creates bare repo in .wald/repos/<host>/<owner>/<name>.git
+# Creates bare repo in .wald/repos/<path>.git
+# Supports subgroups: github.com/user/repo or git.zib.de/iol/research/project
 # If second arg is "with_commits", creates branches and commits
 create_bare_repo() {
     local repo_id="$1"
     local with_commits="${2:-}"
 
-    # Parse repo_id into host/owner/name
-    local host owner name
-    if [[ "$repo_id" =~ ^([^/]+)/([^/]+)/([^/]+)$ ]]; then
-        host="${BASH_REMATCH[1]}"
-        owner="${BASH_REMATCH[2]}"
-        name="${BASH_REMATCH[3]}"
+    # Get bare repo path using helper
+    local bare_path
+    bare_path=$(get_bare_repo_path "$repo_id") || return 1
+
+    # Extract just the repo name for commit messages
+    parse_repo_id "$repo_id" || return 1
+    local name="$REPO_NAME"
+
+    # Create directory structure
+    mkdir -p "$(dirname "$bare_path")"
+
+    if [[ "$with_commits" == "with_commits" ]]; then
+        # Create temporary working directory to build history
+        local temp_repo
+        temp_repo=$(mktemp -d /tmp/wald-bare.XXXXXX)
+        cd "$temp_repo" || return 1
+
+        git init --quiet
+        git config user.name "Wald Test"
+        git config user.email "test@wald.local"
+
+        # Create realistic commit history
+        echo "# $name" > README.md
+        git add README.md
+        git commit --quiet -m "Initial commit"
+
+        echo "Project description" >> README.md
+        git add README.md
+        git commit --quiet -m "Add description"
+
+        # Create dev branch
+        git checkout -b dev --quiet
+        echo "Feature in progress" > feature.txt
+        git add feature.txt
+        git commit --quiet -m "Start feature development"
+
+        # Return to main
+        git checkout main --quiet
+
+        # Clone to bare repo in workspace
+        cd - >/dev/null || return 1
+        git clone --bare --quiet "$temp_repo" "$bare_path"
+
+        # Clean up temp repo
+        rm -rf "$temp_repo"
     else
-        echo "Invalid repo_id format: $repo_id" >&2
-        return 1
+        # Create empty bare repo
+        git init --bare --quiet "$bare_path"
     fi
 
-    # Use setup.sh function
-    create_bare_repo_in_workspace "$host" "$owner" "$name" "$with_commits"
+    return 0
 }
 
 # ====================================================================================
@@ -136,6 +175,7 @@ create_bare_repo() {
 # Usage: plant_baum <repo_id> <container_path> <branch1> [branch2] [branch3]
 #
 # Example: plant_baum "github.com/test/repo" "tools/repo" "main" "dev"
+# Supports subgroups: plant_baum "git.zib.de/iol/research/project" "research/project" "main"
 plant_baum() {
     local repo_id="$1"
     local container_path="$2"
@@ -148,18 +188,9 @@ plant_baum() {
     # Create .baum/ directory
     mkdir -p "$container_path/.baum"
 
-    # Parse repo_id for bare repo path
-    local host owner name
-    if [[ "$repo_id" =~ ^([^/]+)/([^/]+)/([^/]+)$ ]]; then
-        host="${BASH_REMATCH[1]}"
-        owner="${BASH_REMATCH[2]}"
-        name="${BASH_REMATCH[3]}"
-    else
-        echo "Invalid repo_id format: $repo_id" >&2
-        return 1
-    fi
-
-    local bare_repo=".wald/repos/$host/$owner/$name.git"
+    # Get bare repo path using helper
+    local bare_repo
+    bare_repo=$(get_bare_repo_path "$repo_id") || return 1
 
     if [[ ! -d "$bare_repo" ]]; then
         echo "Bare repo does not exist: $bare_repo" >&2
@@ -191,6 +222,63 @@ EOF
     path: _${branch}.wt
 EOF
     done
+
+    return 0
+}
+
+# Materialize a baum received via sync
+# Creates worktrees for entries in baum manifest that don't exist on disk
+# Usage: materialize_baum <baum_path>
+#
+# This handles the case where sync pulls a .baum directory but worktrees don't exist.
+# Reads repo_id from baum manifest, creates worktrees from bare repo.
+materialize_baum() {
+    local baum_path="$1"
+    local manifest="$baum_path/.baum/manifest.yaml"
+
+    if [[ ! -f "$manifest" ]]; then
+        echo "Baum manifest not found: $manifest" >&2
+        return 1
+    fi
+
+    # Extract repo_id from manifest
+    local repo_id
+    repo_id=$(grep "^repo_id:" "$manifest" | cut -d' ' -f2)
+    if [[ -z "$repo_id" ]]; then
+        echo "Could not extract repo_id from manifest" >&2
+        return 1
+    fi
+
+    # Get bare repo path
+    local bare_repo
+    bare_repo=$(get_bare_repo_path "$repo_id") || return 1
+
+    if [[ ! -d "$bare_repo" ]]; then
+        echo "Bare repo not found: $bare_repo" >&2
+        return 1
+    fi
+
+    # Parse worktrees from manifest and create missing ones
+    # Format: "  - branch: <name>\n    path: <path>"
+    local branch=""
+    local wt_path=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*branch:[[:space:]]*(.*) ]]; then
+            branch="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^[[:space:]]*path:[[:space:]]*(.*) ]]; then
+            wt_path="${BASH_REMATCH[1]}"
+            # Got both branch and path, create worktree if missing
+            if [[ -n "$branch" && -n "$wt_path" ]]; then
+                local full_path="$baum_path/$wt_path"
+                if [[ ! -d "$full_path" ]]; then
+                    git -C "$bare_repo" worktree add "$PWD/$full_path" "$branch" 2>/dev/null || \
+                    git -C "$bare_repo" worktree add -b "$branch" "$PWD/$full_path" 2>/dev/null || true
+                fi
+            fi
+            branch=""
+            wt_path=""
+        fi
+    done < "$manifest"
 
     return 0
 }
@@ -242,6 +330,93 @@ assert_baum_has_worktree() {
 
     if ! grep -q "branch: $branch" "$manifest"; then
         _fail "$msg: branch $branch not in baum manifest"
+        return 1
+    fi
+
+    return 0
+}
+
+# Assert bare repo has worktree registered
+# Usage: assert_bare_has_worktree <repo_id> <worktree_path>
+#
+# Checks that the bare repo's worktree registry contains an entry for the given path.
+# The worktree registry is stored in <bare-repo>/worktrees/<name>/gitdir
+assert_bare_has_worktree() {
+    local repo_id="$1"
+    local wt_path="$2"
+    local msg="${3:-bare repo should have worktree registered}"
+
+    local bare_repo
+    bare_repo=$(get_bare_repo_path "$repo_id") || {
+        _fail "$msg: could not get bare repo path for $repo_id"
+        return 1
+    }
+
+    if [[ ! -d "$bare_repo" ]]; then
+        _fail "$msg: bare repo does not exist: $bare_repo"
+        return 1
+    fi
+
+    local worktrees_dir="$bare_repo/worktrees"
+    if [[ ! -d "$worktrees_dir" ]]; then
+        _fail "$msg: no worktrees registered in $bare_repo"
+        return 1
+    fi
+
+    # Check if any worktree registry entry points to the given path
+    local found=0
+    local abs_wt_path
+    abs_wt_path=$(cd "$(dirname "$wt_path")" 2>/dev/null && pwd)/$(basename "$wt_path") || abs_wt_path="$PWD/$wt_path"
+
+    for wt_dir in "$worktrees_dir"/*; do
+        if [[ -f "$wt_dir/gitdir" ]]; then
+            local gitdir_content
+            gitdir_content=$(cat "$wt_dir/gitdir")
+            # gitdir contains path to worktree's .git file
+            local registered_path
+            registered_path=$(dirname "$gitdir_content")
+            if [[ "$registered_path" == "$abs_wt_path" ]] || [[ "$gitdir_content" == *"$wt_path"* ]]; then
+                found=1
+                break
+            fi
+        fi
+    done
+
+    if [[ $found -eq 0 ]]; then
+        _fail "$msg: worktree $wt_path not found in bare repo registry"
+        return 1
+    fi
+
+    return 0
+}
+
+# Assert bare repo worktree count matches expected
+# Usage: assert_bare_worktree_count <repo_id> <expected_count>
+assert_bare_worktree_count() {
+    local repo_id="$1"
+    local expected="$2"
+    local msg="${3:-bare repo worktree count should match}"
+
+    local bare_repo
+    bare_repo=$(get_bare_repo_path "$repo_id") || {
+        _fail "$msg: could not get bare repo path for $repo_id"
+        return 1
+    }
+
+    local worktrees_dir="$bare_repo/worktrees"
+    local actual=0
+
+    if [[ -d "$worktrees_dir" ]]; then
+        # Count non-pruned worktree entries
+        for wt_dir in "$worktrees_dir"/*; do
+            if [[ -d "$wt_dir" && -f "$wt_dir/gitdir" ]]; then
+                actual=$((actual + 1))
+            fi
+        done
+    fi
+
+    if [[ "$actual" -ne "$expected" ]]; then
+        _fail "$msg: expected $expected worktrees, found $actual in $bare_repo"
         return 1
     fi
 
@@ -318,28 +493,58 @@ get_last_sync() {
 
 # Parse repo_id into components
 # Usage: parse_repo_id <repo_id>
-# Returns: Sets REPO_HOST, REPO_OWNER, REPO_NAME
+# Returns: Sets REPO_HOST, REPO_PATH (array), REPO_NAME
+#
+# Supports arbitrary path depth for GitLab subgroups:
+#   github.com/user/repo -> HOST=github.com, PATH=(user repo), NAME=repo
+#   git.zib.de/iol/research/project -> HOST=git.zib.de, PATH=(iol research project), NAME=project
 parse_repo_id() {
     local repo_id="$1"
 
-    if [[ "$repo_id" =~ ^([^/]+)/([^/]+)/([^/]+)$ ]]; then
-        REPO_HOST="${BASH_REMATCH[1]}"
-        REPO_OWNER="${BASH_REMATCH[2]}"
-        REPO_NAME="${BASH_REMATCH[3]}"
-        return 0
-    else
+    # Must have at least host/something
+    if [[ ! "$repo_id" =~ / ]]; then
         echo "Invalid repo_id format: $repo_id" >&2
         return 1
     fi
+
+    # Split on /
+    IFS='/' read -ra parts <<< "$repo_id"
+
+    if [[ ${#parts[@]} -lt 2 ]]; then
+        echo "Invalid repo_id format: $repo_id" >&2
+        return 1
+    fi
+
+    REPO_HOST="${parts[0]}"
+    REPO_PATH=("${parts[@]:1}")
+    REPO_NAME="${parts[-1]}"
+
+    # Verify no empty segments
+    for part in "${parts[@]}"; do
+        if [[ -z "$part" ]]; then
+            echo "Empty segment in repo_id: $repo_id" >&2
+            return 1
+        fi
+    done
+
+    return 0
 }
 
 # Get bare repo path from repo_id
 # Usage: get_bare_repo_path <repo_id>
+#
+# Returns path like: .wald/repos/git.zib.de/iol/research/project.git
 get_bare_repo_path() {
     local repo_id="$1"
 
     if parse_repo_id "$repo_id"; then
-        echo ".wald/repos/$REPO_HOST/$REPO_OWNER/$REPO_NAME.git"
+        # Join path segments and append .git to last one
+        local path=".wald/repos/$REPO_HOST"
+        for segment in "${REPO_PATH[@]}"; do
+            path="$path/$segment"
+        done
+        # Replace last segment with .git suffix
+        echo "${path}.git"
     else
         return 1
     fi
@@ -414,4 +619,152 @@ debug_multi_machine() {
         echo "=== Beta Workspace ==="
         debug_workspace "$TEST_BETA"
     fi
+}
+
+# ====================================================================================
+# Additional Worktree Assertions
+# ====================================================================================
+
+# Assert worktree does NOT exist
+# Usage: assert_worktree_not_exists <path>
+assert_worktree_not_exists() {
+    local path="$1"
+    local msg="${2:-worktree should not exist}"
+
+    # Check directory does not exist
+    if [[ -d "$path" ]]; then
+        _fail "$msg: directory still exists: $path"
+        return 1
+    fi
+
+    return 0
+}
+
+# Assert baum has exact worktree count
+# Usage: assert_baum_worktree_count <baum_path> <expected_count>
+assert_baum_worktree_count() {
+    local baum_path="$1"
+    local expected="$2"
+    local msg="${3:-baum should have expected worktree count}"
+
+    local manifest="$baum_path/.baum/manifest.yaml"
+
+    if [[ ! -f "$manifest" ]]; then
+        _fail "$msg: baum manifest does not exist: $manifest"
+        return 1
+    fi
+
+    # Count worktree entries (lines starting with "  - branch:")
+    local actual
+    actual=$(grep -c "^[[:space:]]*-[[:space:]]*branch:" "$manifest" 2>/dev/null || echo "0")
+
+    if [[ "$actual" -ne "$expected" ]]; then
+        _fail "$msg: expected $expected worktrees, found $actual"
+        return 1
+    fi
+
+    return 0
+}
+
+# Assert baum does NOT have worktree for branch
+# Usage: assert_baum_not_has_worktree <baum_path> <branch>
+assert_baum_not_has_worktree() {
+    local baum_path="$1"
+    local branch="$2"
+    local msg="${3:-baum should not have worktree for branch}"
+
+    local manifest="$baum_path/.baum/manifest.yaml"
+
+    if [[ ! -f "$manifest" ]]; then
+        _fail "$msg: baum manifest does not exist: $manifest"
+        return 1
+    fi
+
+    if grep -q "branch: $branch" "$manifest"; then
+        _fail "$msg: branch $branch found in baum manifest"
+        return 1
+    fi
+
+    return 0
+}
+
+# ====================================================================================
+# Test Setup Helpers
+# ====================================================================================
+
+# Create uncommitted changes in a worktree
+# Usage: create_uncommitted_changes <worktree_path>
+create_uncommitted_changes() {
+    local wt_path="$1"
+
+    if [[ ! -d "$wt_path" ]]; then
+        echo "Worktree does not exist: $wt_path" >&2
+        return 1
+    fi
+
+    # Create a new file with uncommitted changes
+    echo "Uncommitted change $(date +%s)" > "$wt_path/uncommitted.txt"
+    git -C "$wt_path" add uncommitted.txt
+
+    return 0
+}
+
+# Create uncommitted changes (untracked file) in a worktree
+# Usage: create_untracked_file <worktree_path>
+create_untracked_file() {
+    local wt_path="$1"
+
+    if [[ ! -d "$wt_path" ]]; then
+        echo "Worktree does not exist: $wt_path" >&2
+        return 1
+    fi
+
+    # Create untracked file
+    echo "Untracked file $(date +%s)" > "$wt_path/untracked.txt"
+
+    return 0
+}
+
+# Assert .gitignore contains entry
+# Usage: assert_gitignore_contains <container_path> <entry>
+assert_gitignore_contains() {
+    local container="$1"
+    local entry="$2"
+    local msg="${3:-.gitignore should contain entry}"
+
+    local gitignore="$container/.gitignore"
+
+    if [[ ! -f "$gitignore" ]]; then
+        _fail "$msg: .gitignore does not exist: $gitignore"
+        return 1
+    fi
+
+    if ! grep -qF "$entry" "$gitignore"; then
+        _fail "$msg: '$entry' not found in .gitignore"
+        return 1
+    fi
+
+    return 0
+}
+
+# Assert .gitignore does NOT contain entry
+# Usage: assert_gitignore_not_contains <container_path> <entry>
+assert_gitignore_not_contains() {
+    local container="$1"
+    local entry="$2"
+    local msg="${3:-.gitignore should not contain entry}"
+
+    local gitignore="$container/.gitignore"
+
+    if [[ ! -f "$gitignore" ]]; then
+        # No .gitignore means entry definitely not present
+        return 0
+    fi
+
+    if grep -qF "$entry" "$gitignore"; then
+        _fail "$msg: '$entry' found in .gitignore"
+        return 1
+    fi
+
+    return 0
 }

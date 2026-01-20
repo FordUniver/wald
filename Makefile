@@ -28,10 +28,12 @@ test: test-unit test-integration
 test-unit:
 	cargo test --lib
 
-# Run integration tests
+# Run integration tests (requires debug build)
 test-integration:
+	@echo "Building debug binary..."
+	@cargo build
 	@echo "Running integration tests..."
-	@cd test && ./run_tests.sh
+	@cd test && ./run_tests.sh ../target/debug/wald
 
 # Run tests with verbose output
 test-verbose:
