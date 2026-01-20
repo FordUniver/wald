@@ -10,7 +10,11 @@
 #   ./run_tests.sh target/release/wald                # Use built binary
 #   ./run_tests.sh "cargo run --" cases/test_plant.sh # Run specific test
 
-set -euo pipefail
+# Note: We use -uo pipefail but NOT -e because:
+# - Assertions return non-zero on failure (expected behavior)
+# - We want to continue running tests after failures
+# - Each test file handles its own error reporting via TAP
+set -uo pipefail
 
 # ====================================================================================
 # Configuration
@@ -21,6 +25,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Default wald binary (use cargo run in development)
 WALD_BIN="${1:-cargo run --quiet --}"
+
+# If WALD_BIN is a file path (not a command), make it absolute
+# This ensures it works after tests cd to temp directories
+if [[ -f "$WALD_BIN" ]]; then
+    WALD_BIN="$(cd "$(dirname "$WALD_BIN")" && pwd)/$(basename "$WALD_BIN")"
+fi
 
 # Test files to run (default: all test_*.sh in cases/)
 shift 2>/dev/null || true
@@ -61,7 +71,7 @@ TOTAL_PASSED=0
 TOTAL_FAILED=0
 FAILED_TESTS=()
 
-# Execute a single test file
+# Execute a single test file and parse its TAP output
 run_test_file() {
     local test_file="$1"
     local test_name
@@ -71,23 +81,58 @@ run_test_file() {
         echo "# Running $test_name" >&2
     fi
 
-    # Reset counters for this file
-    reset_counters
-
     # Export WALD_BIN for test scripts
     export WALD_BIN
 
-    # Run test file in subshell to isolate environment
+    # Run test file in subshell, capture TAP output
     # shellcheck disable=SC1090
-    (
+    local output
+    output=$(
+        # Reset counters in subshell
+        _TEST_PASSED=0
+        _TEST_FAILED=0
+        _TEST_CURRENT=""
+        _CURRENT_TEST_FAILED=""
+        _DIAGNOSTIC_OUTPUT=""
+
         source "$test_file"
-    )
 
-    # Collect results from this file
-    TOTAL_PASSED=$((_TEST_PASSED + TOTAL_PASSED))
-    TOTAL_FAILED=$((_TEST_FAILED + TOTAL_FAILED))
+        # Ensure summary is printed
+        if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+            print_summary 2>/dev/null || true
+        fi
+    ) || true  # Don't fail on non-zero exit (expected for failing tests)
 
-    if [[ $_TEST_FAILED -gt 0 ]]; then
+    # Replay output for user (with renumbered test numbers)
+    local file_passed=0
+    local file_failed=0
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^ok\ [0-9]+\ -\ (.*)$ ]]; then
+            ((file_passed++)) || true
+            local test_num=$((TOTAL_PASSED + TOTAL_FAILED + file_passed + file_failed))
+            echo "ok $test_num - ${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^not\ ok\ [0-9]+\ -\ (.*)$ ]]; then
+            ((file_failed++)) || true
+            local test_num=$((TOTAL_PASSED + TOTAL_FAILED + file_passed + file_failed))
+            echo "not ok $test_num - ${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^[[:space:]]*# ]]; then
+            # Diagnostic line, pass through
+            echo "$line"
+        elif [[ "$line" =~ ^1\.\. ]]; then
+            # Skip per-file plan line (we'll emit global plan at end)
+            :
+        elif [[ -n "$line" ]]; then
+            # Other output (e.g., summary messages), show as comment
+            echo "# $line"
+        fi
+    done <<< "$output"
+
+    # Update global counters
+    TOTAL_PASSED=$((TOTAL_PASSED + file_passed))
+    TOTAL_FAILED=$((TOTAL_FAILED + file_failed))
+
+    if [[ $file_failed -gt 0 ]]; then
         FAILED_TESTS+=("$test_name")
     fi
 }

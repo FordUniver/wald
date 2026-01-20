@@ -142,19 +142,49 @@ fn replay_move(ws: &Workspace, old_path: &str, new_path: &str, out: &Output) -> 
     let old_abs = ws.root.join(old_path);
     let new_abs = ws.root.join(new_path);
 
-    // Check if old path exists (shouldn't after git pull)
-    if old_abs.exists() {
-        // Check if new path also exists (conflict)
-        if new_abs.exists() {
+    // After git pull with rename detection:
+    // - Old path may have orphaned worktrees (not git-tracked, so not removed)
+    // - New path has .baum directory (git-tracked, so moved by git)
+    //
+    // We need to move the worktrees to the new location.
+
+    let old_exists = old_abs.exists();
+    let new_exists = new_abs.exists();
+    let old_is_baum = is_baum(&old_abs);
+    let new_is_baum = is_baum(&new_abs);
+
+    if old_exists && new_exists {
+        // Both paths exist - check if we can merge
+        if !old_is_baum && new_is_baum {
+            // Old has orphaned worktrees, new has .baum from git
+            // Move worktree directories from old to new
+            move_worktrees(&old_abs, &new_abs)?;
+            // Clean up old directory if empty
+            if old_abs.read_dir()?.next().is_none() {
+                fs::remove_dir(&old_abs)?;
+            }
+            // Update worktree paths in bare repo
+            let baum = load_baum(&new_abs)?;
+            update_worktree_paths(ws, &baum.repo_id, old_path, new_path)?;
+        } else if old_is_baum && new_is_baum {
+            // True conflict - both are complete baums
+            out.warn(&format!(
+                "Move conflict: both {} and {} are baums",
+                old_path, new_path
+            ));
+        } else {
+            // Some other case
             out.warn(&format!(
                 "Move conflict: both {} and {} exist",
                 old_path, new_path
             ));
-            return Ok(());
         }
+        return Ok(());
+    }
 
+    if old_exists && !new_exists {
         // Old exists but new doesn't - need to do the move
-        if is_baum(&old_abs) {
+        if old_is_baum {
             // Get bare repo to update worktree references
             let baum = load_baum(&old_abs)?;
 
@@ -171,6 +201,25 @@ fn replay_move(ws: &Workspace, old_path: &str, new_path: &str, out: &Output) -> 
         }
     }
 
+    Ok(())
+}
+
+/// Move worktree directories from old baum location to new baum location
+fn move_worktrees(old_path: &std::path::Path, new_path: &std::path::Path) -> Result<()> {
+    for entry in fs::read_dir(old_path)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Move _*.wt directories (worktrees)
+        if name_str.starts_with('_') && name_str.ends_with(".wt") {
+            let old_wt = entry.path();
+            let new_wt = new_path.join(&name);
+            if !new_wt.exists() {
+                fs::rename(&old_wt, &new_wt)?;
+            }
+        }
+    }
     Ok(())
 }
 

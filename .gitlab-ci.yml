@@ -9,6 +9,7 @@ stages:
 variables:
   GIT_DEPTH: 1
   RUST_VERSION: "1.83"
+  YQ_VERSION: "4.44.3"  # Pin yq version for reproducibility
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
 
 # ====================================================================================
@@ -23,7 +24,7 @@ test:rust:
     - apt-get update
     - apt-get install -y git git-lfs
     # Install yq for YAML manipulation in tests
-    - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+    - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
     - chmod +x /usr/local/bin/yq
     # Configure git for tests
     - git config --global user.name "CI Test"
@@ -59,7 +60,7 @@ test:verbose:
   before_script:
     - apt-get update
     - apt-get install -y git git-lfs
-    - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+    - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
     - chmod +x /usr/local/bin/yq
     - git config --global user.name "CI Test"
     - git config --global user.email "ci@wald.test"

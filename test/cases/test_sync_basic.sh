@@ -27,9 +27,8 @@ begin_test "wald sync with no changes reports up to date"
     # assert_contains "$result" "No changes"
 
     # For now, just verify workspace is clean
-    local status
-    status=$(git status --porcelain)
-    assert_eq "" "$status" "Workspace should be clean"
+    _status=$(git status --porcelain)
+    assert_eq "" "$_status" "Workspace should be clean"
 
     teardown_wald_workspace
 end_test
@@ -38,19 +37,17 @@ begin_test "wald sync updates last_sync in state.yaml"
     setup_wald_workspace
 
     # Get current commit
-    local current_commit
-    current_commit=$(git rev-parse HEAD)
+    _current_commit=$(git rev-parse HEAD)
 
     # Expected behavior: sync should update state.yaml
     # $WALD_BIN sync
 
     # Simulate expected result
-    update_last_sync "$current_commit"
+    update_last_sync "$_current_commit"
 
     # Verify state updated
-    local last_sync
-    last_sync=$(get_last_sync)
-    assert_eq "$current_commit" "$last_sync" "last_sync should match current commit"
+    _last_sync=$(get_last_sync)
+    assert_eq "$_current_commit" "$_last_sync" "last_sync should match current commit"
 
     teardown_wald_workspace
 end_test
@@ -71,9 +68,8 @@ begin_test "wald sync detects when workspace is ahead"
     # Don't push yet
 
     # Check git status shows ahead
-    local status
-    status=$(git status)
-    assert_contains "$status" "Your branch is ahead"
+    _status=$(git status)
+    assert_contains "$_status" "Your branch is ahead"
 
     teardown_multi_machine
 end_test
@@ -160,12 +156,11 @@ begin_test "wald sync detects diverged history"
 
     # Verify diverged state via git
     git fetch origin
-    local behind ahead
-    behind=$(git rev-list HEAD..origin/main --count)
-    ahead=$(git rev-list origin/main..HEAD --count)
+    _behind=$(git rev-list HEAD..origin/main --count)
+    _ahead=$(git rev-list origin/main..HEAD --count)
 
-    assert_gt "$behind" "0" "Should be behind origin"
-    assert_gt "$ahead" "0" "Should be ahead of origin"
+    assert_gt "$_behind" "0" "Should be behind origin"
+    assert_gt "$_ahead" "0" "Should be ahead of origin"
 
     teardown_multi_machine
 end_test
@@ -186,9 +181,8 @@ begin_test "wald sync fails with uncommitted changes"
     # assert_contains "$result" "commit or stash"
 
     # Verify workspace is dirty
-    local status
-    status=$(git status --porcelain)
-    assert_contains "$status" "new-file.txt"
+    _status=$(git status --porcelain)
+    assert_contains "$_status" "new-file.txt"
 
     teardown_wald_workspace
 end_test
@@ -208,9 +202,8 @@ begin_test "wald sync with --stash handles uncommitted changes"
 
     # Verify file was committed
     assert_file_exists "new-file.txt"
-    local status
-    status=$(git status --porcelain)
-    assert_eq "" "$status" "Workspace should be clean after commit"
+    _status=$(git status --porcelain)
+    assert_eq "" "$_status" "Workspace should be clean after commit"
 
     teardown_wald_workspace
 end_test

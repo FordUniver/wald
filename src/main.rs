@@ -35,6 +35,7 @@ enum Commands {
     },
 
     /// Plant a baum (create container with worktrees)
+    #[command(visible_alias = "create")]
     Plant {
         /// Repository ID or alias
         repo: String,
@@ -48,6 +49,7 @@ enum Commands {
     },
 
     /// Uproot a baum (remove container and worktrees)
+    #[command(visible_alias = "rm")]
     Uproot {
         /// Path to the baum container
         path: PathBuf,
@@ -58,6 +60,7 @@ enum Commands {
     },
 
     /// Move a baum to a new location
+    #[command(visible_alias = "graft", visible_alias = "mv")]
     Move {
         /// Current baum path
         old_path: PathBuf,

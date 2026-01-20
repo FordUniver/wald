@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Tests for 'wald sync' move detection and replay
 # Core feature: detecting and replaying baum moves across machines
+#
+# NOTE: Tests use CLI where possible. Some helpers remain for setup:
+# - create_bare_repo: Creates bare repos (simulates clone from remote)
+# - workspace_commit: Git operations on workspace repo
+# - detect_moves: Uses git diff -M to verify move detection works
 
 # Source test libraries
 if [[ -z "$WALD_BIN" ]]; then
@@ -21,28 +26,24 @@ begin_test "wald sync detects baum move via git diff -M"
     # Alpha: plant and commit
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
-    local before_commit
-    before_commit=$(get_commit_hash "$TEST_ALPHA")
+    _before_commit=$(get_commit_hash "$TEST_ALPHA")
 
-    # Alpha: move baum
-    mkdir -p admin
-    git -C "$TEST_ALPHA" mv tools/repo admin/repo
+    # Alpha: move baum using CLI
+    $WALD_BIN move tools/repo admin/repo
     workspace_commit "$TEST_ALPHA" "Move repo to admin"
 
-    local after_commit
-    after_commit=$(get_commit_hash "$TEST_ALPHA")
+    _after_commit=$(get_commit_hash "$TEST_ALPHA")
 
     # Verify git detects the move
-    local moves
-    moves=$(detect_moves "$TEST_ALPHA" "$before_commit" "$after_commit")
+    _moves=$(detect_moves "$TEST_ALPHA" "$_before_commit" "$_after_commit")
 
-    assert_contains "$moves" ".baum/manifest.yaml"
-    assert_contains "$moves" "tools/repo" "Should show old path"
-    assert_contains "$moves" "admin/repo" "Should show new path"
+    assert_contains "$_moves" ".baum/manifest.yaml"
+    assert_contains "$_moves" "tools/repo" "Should show old path"
+    assert_contains "$_moves" "admin/repo" "Should show new path"
 
     teardown_multi_machine
 end_test
@@ -53,38 +54,29 @@ begin_test "wald sync replays single baum move"
     # Alpha: plant baum
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
     # Beta: sync to get initial plant
     cd "$TEST_BETA" || exit 1
-
-    # Expected behavior:
-    # $WALD_BIN sync
-
-    # Simulate: pull and recreate baum
-    git pull --rebase origin main
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    # Create bare repo before sync (simulates having cloned it)
+    create_bare_repo "github.com/test/repo" "with_commits"
+    # Sync pulls manifest (with repo entry) and baum directory
+    $WALD_BIN sync
+    # Materialize baum (creates worktrees from manifest entries)
+    materialize_baum "tools/repo"
 
     assert_worktree_exists "tools/repo/_main.wt"
 
-    # Alpha: move baum
+    # Alpha: move baum using CLI
     cd "$TEST_ALPHA" || exit 1
-    mkdir -p admin
-    git mv tools/repo admin/repo
+    $WALD_BIN move tools/repo admin/repo
     workspace_commit "$TEST_ALPHA" "Move to admin"
 
     # Beta: sync should replay move
     cd "$TEST_BETA" || exit 1
-
-    # Expected behavior:
-    # $WALD_BIN sync
-
-    # Simulate: pull and move locally
-    git pull --rebase origin main
-    mkdir -p admin
-    mv tools/repo admin/repo 2>/dev/null || true
+    $WALD_BIN sync
 
     # Verify move replayed
     assert_dir_not_exists "tools/repo"
@@ -100,28 +92,26 @@ begin_test "wald sync replays move with multiple worktrees"
     # Alpha: plant with multiple branches
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/repo" "main" "dev"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main dev
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
-    # Beta: sync
+    # Beta: sync and materialize
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    plant_baum "github.com/test/repo" "tools/repo" "main" "dev"
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN sync
+    materialize_baum "tools/repo"
 
-    # Alpha: move baum
+    # Alpha: move baum using CLI
     cd "$TEST_ALPHA" || exit 1
-    mkdir -p research/project
-    git mv tools/repo research/project/repo
+    $WALD_BIN move tools/repo research/project/repo
     workspace_commit "$TEST_ALPHA" "Move to research"
 
-    # Beta: sync and replay
+    # Beta: sync replays the move
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    mkdir -p research/project
-    mv tools/repo research/project/repo 2>/dev/null || true
+    $WALD_BIN sync
 
-    # Verify all worktrees moved
+    # Verify all worktrees moved (sync moves the entire baum directory)
     assert_dir_not_exists "tools/repo"
     assert_worktree_exists "research/project/repo/_main.wt"
     assert_worktree_exists "research/project/repo/_dev.wt"
@@ -140,31 +130,29 @@ begin_test "wald sync replays multiple baum moves in one commit"
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo-a" "with_commits"
     create_bare_repo "github.com/test/repo-b" "with_commits"
-    add_repo_to_manifest "github.com/test/repo-a" "minimal" "100"
-    add_repo_to_manifest "github.com/test/repo-b" "minimal" "100"
-    plant_baum "github.com/test/repo-a" "tools/repo-a" "main"
-    plant_baum "github.com/test/repo-b" "tools/repo-b" "main"
+    $WALD_BIN repo add "github.com/test/repo-a"
+    $WALD_BIN repo add "github.com/test/repo-b"
+    $WALD_BIN plant "github.com/test/repo-a" "tools/repo-a" main
+    $WALD_BIN plant "github.com/test/repo-b" "tools/repo-b" main
     workspace_commit "$TEST_ALPHA" "Plant repos"
 
-    # Beta: sync
+    # Beta: sync and materialize
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    plant_baum "github.com/test/repo-a" "tools/repo-a" "main"
-    plant_baum "github.com/test/repo-b" "tools/repo-b" "main"
+    create_bare_repo "github.com/test/repo-a" "with_commits"
+    create_bare_repo "github.com/test/repo-b" "with_commits"
+    $WALD_BIN sync
+    materialize_baum "tools/repo-a"
+    materialize_baum "tools/repo-b"
 
-    # Alpha: move both baums in single commit
+    # Alpha: move both baums (move commits together, push once)
     cd "$TEST_ALPHA" || exit 1
-    mkdir -p admin
-    git mv tools/repo-a admin/repo-a
-    git mv tools/repo-b admin/repo-b
+    $WALD_BIN move tools/repo-a admin/repo-a
+    $WALD_BIN move tools/repo-b admin/repo-b
     workspace_commit "$TEST_ALPHA" "Move both repos to admin"
 
-    # Beta: sync should replay both moves
+    # Beta: sync replays both moves
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    mkdir -p admin
-    mv tools/repo-a admin/repo-a 2>/dev/null || true
-    mv tools/repo-b admin/repo-b 2>/dev/null || true
+    $WALD_BIN sync
 
     # Verify both moves replayed
     assert_dir_not_exists "tools/repo-a"
@@ -185,29 +173,27 @@ begin_test "wald sync move preserves uncommitted changes"
     # Alpha: plant and push
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
     # Beta: sync and make uncommitted changes
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN sync
+    materialize_baum "tools/repo"
     echo "local work" > "tools/repo/_main.wt/work.txt"
 
     # Alpha: move baum
     cd "$TEST_ALPHA" || exit 1
-    mkdir -p admin
-    git mv tools/repo admin/repo
+    $WALD_BIN move tools/repo admin/repo
     workspace_commit "$TEST_ALPHA" "Move repo"
 
-    # Beta: sync should preserve uncommitted changes
+    # Beta: sync replays move, preserving local worktree contents
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    mkdir -p admin
-    mv tools/repo admin/repo 2>/dev/null || true
+    $WALD_BIN sync
 
-    # Verify uncommitted work preserved
+    # Verify uncommitted work preserved (sync moves the whole baum directory)
     assert_file_exists "admin/repo/_main.wt/work.txt"
     assert_file_contains "admin/repo/_main.wt/work.txt" "local work"
 
@@ -224,27 +210,24 @@ begin_test "wald sync detects baum rename as move"
     # Alpha: plant baum
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/old-name" "main"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/old-name" main
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
-    local before_commit
-    before_commit=$(get_commit_hash "$TEST_ALPHA")
+    _before_commit=$(get_commit_hash "$TEST_ALPHA")
 
     # Alpha: rename baum (move within same directory)
-    git -C "$TEST_ALPHA" mv tools/old-name tools/new-name
+    $WALD_BIN move tools/old-name tools/new-name
     workspace_commit "$TEST_ALPHA" "Rename to new-name"
 
-    local after_commit
-    after_commit=$(get_commit_hash "$TEST_ALPHA")
+    _after_commit=$(get_commit_hash "$TEST_ALPHA")
 
     # Verify git detects as rename (not delete + add)
-    local moves
-    moves=$(detect_moves "$TEST_ALPHA" "$before_commit" "$after_commit")
+    _moves=$(detect_moves "$TEST_ALPHA" "$_before_commit" "$_after_commit")
 
-    assert_contains "$moves" ".baum/manifest.yaml"
-    assert_contains "$moves" "old-name"
-    assert_contains "$moves" "new-name"
+    assert_contains "$_moves" ".baum/manifest.yaml"
+    assert_contains "$_moves" "old-name"
+    assert_contains "$_moves" "new-name"
 
     teardown_multi_machine
 end_test
@@ -263,8 +246,7 @@ begin_test "wald sync ignores non-baum directory moves"
     git add tools/regular-dir/file.txt
     git commit -m "Add regular directory"
 
-    local before_commit
-    before_commit=$(get_commit_hash "$TEST_ALPHA")
+    _before_commit=$(get_commit_hash "$TEST_ALPHA")
 
     mkdir -p admin
     git mv tools/regular-dir admin/regular-dir
@@ -287,31 +269,29 @@ end_test
 begin_test "wald sync handles move to deeply nested path"
     setup_multi_machine
 
-    # Alpha: plant and move to deeply nested location
+    # Alpha: plant
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
-    # Beta: sync
+    # Beta: sync and materialize
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN sync
+    materialize_baum "tools/repo"
 
     # Alpha: move to deeply nested path
     cd "$TEST_ALPHA" || exit 1
-    mkdir -p research/2025/archived/old-projects/q1
-    git mv tools/repo research/2025/archived/old-projects/q1/repo
+    $WALD_BIN move tools/repo research/2025/archived/old-projects/q1/repo
     workspace_commit "$TEST_ALPHA" "Archive old repo"
 
-    # Beta: sync and replay
+    # Beta: sync replays the move
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    mkdir -p research/2025/archived/old-projects/q1
-    mv tools/repo research/2025/archived/old-projects/q1/repo 2>/dev/null || true
+    $WALD_BIN sync
 
-    # Verify deep move
+    # Verify deep move (sync moves the whole baum with worktrees)
     assert_dir_not_exists "tools/repo"
     assert_worktree_exists "research/2025/archived/old-projects/q1/repo/_main.wt"
 
@@ -328,29 +308,23 @@ begin_test "wald sync updates last_sync after processing moves"
     # Alpha: plant and move
     cd "$TEST_ALPHA" || exit 1
     create_bare_repo "github.com/test/repo" "with_commits"
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
-    plant_baum "github.com/test/repo" "tools/repo" "main"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
     workspace_commit "$TEST_ALPHA" "Plant repo"
 
-    mkdir -p admin
-    git mv tools/repo admin/repo
+    $WALD_BIN move tools/repo admin/repo
     workspace_commit "$TEST_ALPHA" "Move repo"
 
-    local final_commit
-    final_commit=$(get_commit_hash "$TEST_ALPHA")
+    _final_commit=$(get_commit_hash "$TEST_ALPHA")
 
     # Beta: sync should update last_sync to final commit
     cd "$TEST_BETA" || exit 1
-    git pull --rebase origin main
-    mkdir -p admin
-    mv tools/repo admin/repo 2>/dev/null || true
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN sync
 
-    # Simulate: update state
-    update_last_sync "$final_commit"
-
-    local last_sync
-    last_sync=$(get_last_sync)
-    assert_eq "$final_commit" "$last_sync" "last_sync should match after move"
+    # Verify state was updated (sync writes last_sync)
+    _last_sync=$(get_last_sync)
+    assert_eq "$_final_commit" "$_last_sync" "last_sync should match after move"
 
     teardown_multi_machine
 end_test

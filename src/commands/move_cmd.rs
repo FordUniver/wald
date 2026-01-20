@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 
-use crate::git::shell::git_mv;
 use crate::git::worktree_move;
 use crate::output::Output;
 use crate::workspace::{is_baum, Workspace};
@@ -128,14 +128,62 @@ pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> 
         fs::remove_dir(&old_container)?;
     }
 
-    // Stage the move in git for proper rename detection
-    let _ = git_mv(&ws.root, &old_container, &new_container);
+    // Stage the changes in git for proper rename detection
+    // Since we've manually moved files, use git add/rm to stage the changes
+    stage_baum_move(&ws.root, &old_container, &new_container)?;
 
     out.success(&format!(
         "Moved {} ({} worktree(s))",
         baum_manifest.repo_id,
         baum_manifest.worktrees.len()
     ));
+
+    Ok(())
+}
+
+/// Stage a baum move in git for proper rename detection
+/// Uses git add/rm to stage the changes since files are already moved
+fn stage_baum_move(repo: &Path, old: &Path, new: &Path) -> Result<()> {
+    // Stage the new location
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("add")
+        .arg(new.join(".baum"))
+        .output();
+
+    // Also stage the new .gitignore if it exists
+    let new_gitignore = new.join(".gitignore");
+    if new_gitignore.exists() {
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .arg("add")
+            .arg(&new_gitignore)
+            .output();
+    }
+
+    // Stage removal of old location (if anything remains tracked)
+    let old_baum = old.join(".baum");
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("rm")
+        .arg("-r")
+        .arg("--cached")
+        .arg("--ignore-unmatch")
+        .arg(&old_baum)
+        .output();
+
+    let old_gitignore = old.join(".gitignore");
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("rm")
+        .arg("--cached")
+        .arg("--ignore-unmatch")
+        .arg(&old_gitignore)
+        .output();
 
     Ok(())
 }

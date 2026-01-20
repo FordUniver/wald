@@ -62,8 +62,18 @@ EOF
 last_sync: null
 EOF
 
+    # Create .gitignore with wald-managed section (ADR-004)
+    cat > .gitignore <<'EOF'
+# wald:start (managed by wald, do not edit)
+.wald/repos/
+.wald/state.yaml
+**/.baum/manifest.local.yaml
+**/_*.wt/
+# wald:end
+EOF
+
     # Initial commit
-    git add .wald/
+    git add .wald/ .gitignore
     git commit --quiet -m "Initialize wald workspace"
 
     # Set cleanup trap
@@ -156,8 +166,18 @@ EOF
 last_sync: null
 EOF
 
+    # Create .gitignore with wald-managed section (ADR-004)
+    cat > .gitignore <<'EOF'
+# wald:start (managed by wald, do not edit)
+.wald/repos/
+.wald/state.yaml
+**/.baum/manifest.local.yaml
+**/_*.wt/
+# wald:end
+EOF
+
     # Commit and push initial structure
-    git add .wald/
+    git add .wald/ .gitignore
     git commit --quiet -m "Initialize wald workspace"
     git push --quiet origin main
 
@@ -270,6 +290,9 @@ create_bare_repo_in_workspace() {
 
 # Commit all changes and push in a workspace
 # Usage: workspace_commit <workspace_path> <message>
+#
+# Note: git add -A respects .gitignore, so .wald/repos/, _*.wt/, and
+# .wald/state.yaml are not staged (per ADR-004 tracking policy).
 workspace_commit() {
     local ws_path="$1"
     local message="$2"

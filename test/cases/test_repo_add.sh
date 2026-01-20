@@ -117,9 +117,8 @@ begin_test "wald repo add prevents duplicate entries"
     # assert_contains "$result" "already exists"
 
     # Verify only one entry exists
-    local count
-    count=$(grep -c "github.com/test/repo" .wald/manifest.yaml || true)
-    assert_eq "1" "$count" "Should have exactly one repo entry"
+    _count=$(grep -c "github.com/test/repo" .wald/manifest.yaml || true)
+    assert_eq "1" "$_count" "Should have exactly one repo entry"
 
     teardown_wald_workspace
 end_test
