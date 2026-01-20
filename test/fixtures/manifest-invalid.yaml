@@ -1,0 +1,4 @@
+# Invalid YAML - missing colon after repos
+repos
+  github.com/test/repo:
+    lfs: minimal

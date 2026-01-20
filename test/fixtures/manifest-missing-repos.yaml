@@ -1,0 +1,4 @@
+# Invalid manifest - missing 'repos' key
+config:
+  default_lfs: minimal
+  default_depth: 100

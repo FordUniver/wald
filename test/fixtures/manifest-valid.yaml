@@ -1,0 +1,25 @@
+# Valid manifest fixture for testing
+# Contains realistic repo configurations
+
+repos:
+  github.com/FordUniver/dotfiles:
+    lfs: full
+    depth: full
+    aliases:
+      - dotfiles
+      - dots
+
+  git.zib.de/cspiegel/ais2t:
+    upstream: git.zib.de/docker/ais2t
+    lfs: minimal
+    depth: 100
+    aliases:
+      - ais2t
+
+  github.com/rust-lang/rust:
+    lfs: minimal
+    depth: 50
+
+  git.zib.de/iol/research/optimization:
+    lfs: full
+    depth: full
