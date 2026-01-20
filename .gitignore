@@ -1,0 +1,6 @@
+# Rust build artifacts
+/target/
+
+# Cargo lock file (binary, not library)
+# Uncomment if this becomes a library
+# Cargo.lock
