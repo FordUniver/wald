@@ -3,8 +3,17 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-const GITIGNORE_MARKER_START: &str = "# >>> wald managed";
-const GITIGNORE_MARKER_END: &str = "# <<< wald managed";
+/// Markers for wald-managed gitignore section (per ADR-004)
+const GITIGNORE_MARKER_START: &str = "# wald:start (managed by wald, do not edit)";
+const GITIGNORE_MARKER_END: &str = "# wald:end";
+
+/// Wald-managed gitignore patterns (per ADR-004)
+const GITIGNORE_PATTERNS: &[&str] = &[
+    ".wald/repos/",
+    ".wald/state.yaml",
+    "**/.baum/manifest.local.yaml",
+    "**/_*.wt/",
+];
 
 /// Ensure the workspace .gitignore has the wald managed section
 pub fn ensure_gitignore_section(workspace_root: &Path) -> Result<()> {
@@ -21,14 +30,11 @@ pub fn ensure_gitignore_section(workspace_root: &Path) -> Result<()> {
         return Ok(());
     }
 
-    // Create managed section
+    // Create managed section with all patterns
+    let patterns = GITIGNORE_PATTERNS.join("\n");
     let managed_section = format!(
-        r#"
-{GITIGNORE_MARKER_START}
-# Local sync state (not committed)
-.wald/state.yaml
-{GITIGNORE_MARKER_END}
-"#
+        "\n{}\n{}\n{}\n",
+        GITIGNORE_MARKER_START, patterns, GITIGNORE_MARKER_END
     );
 
     // Append to existing content
@@ -89,7 +95,12 @@ mod tests {
 
         let content = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
         assert!(content.contains(GITIGNORE_MARKER_START));
+        assert!(content.contains(GITIGNORE_MARKER_END));
+        // Check all ADR-004 patterns are present
+        assert!(content.contains(".wald/repos/"));
         assert!(content.contains(".wald/state.yaml"));
+        assert!(content.contains("**/.baum/manifest.local.yaml"));
+        assert!(content.contains("**/_*.wt/"));
     }
 
     #[test]
