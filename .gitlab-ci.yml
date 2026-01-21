@@ -56,9 +56,11 @@ test:rust:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-# Run tests with verbose output on main branch
+# Run tests with verbose output when test:rust fails (for debugging)
 test:verbose:
   stage: test
+  needs: [test:rust]
+  when: on_failure
   image: rust:${RUST_VERSION}
   before_script:
     - apt-get update
@@ -78,8 +80,6 @@ test:verbose:
       - .cargo/registry
       - .cargo/git
       - target
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # ====================================================================================
 # Build Stage (tags only)
