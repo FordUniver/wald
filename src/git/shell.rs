@@ -158,17 +158,35 @@ mod tests {
 
         // Clone to bare using git command (more reliable than git2 for bare clone)
         let bare_dir = TempDir::new().unwrap();
-        Command::new("git")
+        let output = Command::new("git")
             .arg("clone")
             .arg("--bare")
             .arg(temp_dir.path())
             .arg(bare_dir.path())
             .output()
             .unwrap();
+        assert!(
+            output.status.success(),
+            "git clone --bare failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let bare_repo = Repository::open_bare(bare_dir.path()).unwrap();
 
         (bare_dir, bare_repo)
+    }
+
+    /// Get the default branch name from a repository
+    fn get_default_branch(repo_path: &Path) -> String {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .arg("symbolic-ref")
+            .arg("--short")
+            .arg("HEAD")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
     }
 
     #[test]
@@ -207,16 +225,27 @@ mod tests {
         let wt_dir = TempDir::new().unwrap();
         let wt_path = wt_dir.path().join("worktree");
 
-        // Add a worktree using git command (more reliable)
-        Command::new("git")
+        // Get the default branch name (may be "main" or "master" depending on git config)
+        let branch = get_default_branch(bare_dir.path());
+
+        // Add a worktree using git command
+        let output = Command::new("git")
             .arg("-C")
             .arg(bare_dir.path())
             .arg("worktree")
             .arg("add")
             .arg(&wt_path)
-            .arg("main")
+            .arg(&branch)
             .output()
             .unwrap();
+        assert!(
+            output.status.success(),
+            "git worktree add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Verify worktree was created
+        assert!(wt_path.exists(), "worktree should exist at {:?}", wt_path);
 
         // Manually remove the worktree directory (simulating stale entry)
         std::fs::remove_dir_all(&wt_path).unwrap();
