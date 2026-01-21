@@ -183,6 +183,9 @@ EOF
     git commit --quiet -m "Initialize wald workspace"
     git push --quiet origin main
 
+    # Update bare repo's HEAD to point to main (so clones checkout main by default)
+    git -C "$TEST_REMOTES/workspace.git" symbolic-ref HEAD refs/heads/main
+
     # Clone to machine-beta
     cd "$_MULTI_TEST_DIR" || return 1
     TEST_BETA="$_MULTI_TEST_DIR/machine-beta"
