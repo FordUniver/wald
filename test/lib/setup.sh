@@ -248,7 +248,7 @@ create_bare_repo_in_workspace() {
         local temp_repo=$(mktemp -d /tmp/wald-bare.XXXXXX)
         cd "$temp_repo" || return 1
 
-        git init --quiet
+        git init --quiet --initial-branch=main
         git config user.name "Wald Test"
         git config user.email "test@wald.local"
 
