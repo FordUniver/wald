@@ -166,25 +166,7 @@ test:integration:verbose:
     expire_in: 1 week
 
 # ====================================================================================
-# Release Stage
-# ====================================================================================
-
-# Dev release: latest passing build from main
-release:dev:
-  stage: release
-  needs: [build, test:unit, test:integration]
-  image: alpine:latest
-  script:
-    - echo "Dev build artifact available from pipeline ${CI_PIPELINE_ID}"
-  artifacts:
-    paths:
-      - target/release/wald
-    expire_in: 30 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# ====================================================================================
-# Tagged Release Builds
+# Tagged Release Builds (local builds, CI just creates release entry)
 # ====================================================================================
 
 build:linux-amd64:
