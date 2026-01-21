@@ -1,9 +1,11 @@
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
 use crate::types::{Config, Manifest, SyncState};
+use crate::workspace::gitignore::ensure_gitignore_section;
 
 /// The wald directory name
 pub const WALD_DIR: &str = ".wald";
@@ -120,6 +122,78 @@ impl Workspace {
     pub fn resolve_repo(&self, reference: &str) -> Option<&str> {
         self.manifest.resolve_alias(reference)
     }
+
+    /// Initialize a new workspace at the given path
+    ///
+    /// Creates the .wald/ directory structure with:
+    /// - manifest.yaml (empty repos)
+    /// - config.yaml (default settings)
+    /// - state.yaml (null last_sync)
+    /// - repos/ directory
+    ///
+    /// Also adds wald-managed section to .gitignore
+    pub fn init(root: &Path, force: bool) -> Result<()> {
+        let wald_dir = root.join(WALD_DIR);
+
+        // Check if we're inside an existing wald workspace (no nesting allowed)
+        if let Ok(existing_root) = find_workspace_root_from(root) {
+            if existing_root != root {
+                bail!(
+                    "cannot create nested workspace: already inside workspace at {}",
+                    existing_root.display()
+                );
+            }
+            // existing_root == root means .wald/ exists at this location
+            if !force {
+                bail!(
+                    "workspace already exists at {} (use --force to recreate)",
+                    root.display()
+                );
+            }
+        }
+
+        // Handle existing .wald/ directory
+        if wald_dir.exists() {
+            if !force {
+                bail!(
+                    ".wald/ already exists at {} (use --force to recreate)",
+                    root.display()
+                );
+            }
+            // Remove existing .wald/ for recreation
+            fs::remove_dir_all(&wald_dir)
+                .with_context(|| format!("failed to remove existing .wald/: {}", wald_dir.display()))?;
+        }
+
+        // Create .wald/ directory structure
+        fs::create_dir_all(&wald_dir)
+            .with_context(|| format!("failed to create .wald/: {}", wald_dir.display()))?;
+
+        fs::create_dir_all(wald_dir.join("repos"))
+            .with_context(|| "failed to create .wald/repos/")?;
+
+        // Create manifest.yaml with empty repos
+        let manifest = Manifest::default();
+        manifest.save(&wald_dir.join("manifest.yaml"))?;
+
+        // Create config.yaml with defaults
+        let config = Config::default();
+        config.save(&wald_dir.join("config.yaml"))?;
+
+        // Create state.yaml
+        let state = SyncState::default();
+        state.save(&wald_dir.join("state.yaml"))?;
+
+        // Add wald-managed section to .gitignore
+        ensure_gitignore_section(root)?;
+
+        Ok(())
+    }
+
+    /// Check if a directory is a git repository
+    pub fn is_git_repo(path: &Path) -> bool {
+        path.join(".git").exists()
+    }
 }
 
 #[cfg(test)]
@@ -163,5 +237,86 @@ mod tests {
         let ws = Workspace::load_from(dir.path().to_path_buf()).unwrap();
         assert_eq!(ws.root, dir.path());
         assert!(ws.manifest.repos.is_empty());
+    }
+
+    #[test]
+    fn test_workspace_init_creates_structure() {
+        let dir = TempDir::new().unwrap();
+
+        Workspace::init(dir.path(), false).unwrap();
+
+        // Verify .wald/ structure
+        assert!(dir.path().join(".wald").exists());
+        assert!(dir.path().join(".wald/repos").exists());
+        assert!(dir.path().join(".wald/manifest.yaml").exists());
+        assert!(dir.path().join(".wald/config.yaml").exists());
+        assert!(dir.path().join(".wald/state.yaml").exists());
+        assert!(dir.path().join(".gitignore").exists());
+
+        // Verify we can load the workspace
+        let ws = Workspace::load_from(dir.path().to_path_buf()).unwrap();
+        assert!(ws.manifest.repos.is_empty());
+    }
+
+    #[test]
+    fn test_workspace_init_fails_without_force() {
+        let dir = TempDir::new().unwrap();
+
+        // First init succeeds
+        Workspace::init(dir.path(), false).unwrap();
+
+        // Second init fails without force
+        let result = Workspace::init(dir.path(), false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn test_workspace_init_with_force() {
+        let dir = TempDir::new().unwrap();
+
+        // First init
+        Workspace::init(dir.path(), false).unwrap();
+
+        // Add a marker file
+        fs::write(dir.path().join(".wald/marker.txt"), "test").unwrap();
+        assert!(dir.path().join(".wald/marker.txt").exists());
+
+        // Force reinit
+        Workspace::init(dir.path(), true).unwrap();
+
+        // Marker should be gone
+        assert!(!dir.path().join(".wald/marker.txt").exists());
+
+        // But structure should be valid
+        assert!(dir.path().join(".wald/manifest.yaml").exists());
+    }
+
+    #[test]
+    fn test_workspace_init_no_nesting() {
+        let dir = TempDir::new().unwrap();
+
+        // Create parent workspace
+        Workspace::init(dir.path(), false).unwrap();
+
+        // Try to create child workspace
+        let child = dir.path().join("child");
+        fs::create_dir_all(&child).unwrap();
+
+        let result = Workspace::init(&child, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("nested"));
+    }
+
+    #[test]
+    fn test_is_git_repo() {
+        let dir = TempDir::new().unwrap();
+
+        // Not a git repo initially
+        assert!(!Workspace::is_git_repo(dir.path()));
+
+        // Create .git directory
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        assert!(Workspace::is_git_repo(dir.path()));
     }
 }

@@ -6,7 +6,7 @@ use anyhow::{bail, Result};
 use crate::git;
 use crate::output::Output;
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{is_baum, validate_workspace_path, Workspace};
 
 /// Options for uproot command
 pub struct UprootOptions {
@@ -18,12 +18,8 @@ pub struct UprootOptions {
 pub fn uproot(ws: &Workspace, opts: UprootOptions, out: &Output) -> Result<()> {
     out.require_human("uproot")?;
 
-    // Resolve path relative to workspace
-    let container = if opts.path.is_absolute() {
-        opts.path.clone()
-    } else {
-        ws.root.join(&opts.path)
-    };
+    // Resolve path relative to workspace (with path traversal protection)
+    let container = validate_workspace_path(&ws.root, &opts.path)?;
 
     // Check if it's a baum
     if !is_baum(&container) {

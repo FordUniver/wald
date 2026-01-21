@@ -1,5 +1,6 @@
 pub mod branch;
 pub mod doctor;
+pub mod init;
 pub mod move_cmd;
 pub mod plant;
 pub mod prune;
@@ -11,6 +12,7 @@ pub mod worktrees;
 
 pub use branch::branch;
 pub use doctor::doctor;
+pub use init::init;
 pub use move_cmd::move_baum;
 pub use plant::plant;
 pub use prune::prune;

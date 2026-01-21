@@ -6,7 +6,7 @@ use crate::git;
 use crate::naming::worktree_dir_name;
 use crate::output::Output;
 use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
-use crate::workspace::{create_baum, is_baum, Workspace};
+use crate::workspace::{create_baum, is_baum, validate_workspace_path, Workspace};
 
 /// Options for plant command
 pub struct PlantOptions {
@@ -38,12 +38,8 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
     // Ensure workspace-level .gitignore has wald section
     ensure_gitignore_section(&ws.root)?;
 
-    // Resolve container path (relative to workspace root)
-    let container = if opts.container.is_absolute() {
-        opts.container.clone()
-    } else {
-        ws.root.join(&opts.container)
-    };
+    // Resolve container path (with path traversal protection)
+    let container = validate_workspace_path(&ws.root, &opts.container)?;
 
     // Check if container path exists as file
     if container.exists() && !container.is_dir() {

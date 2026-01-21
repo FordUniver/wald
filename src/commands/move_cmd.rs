@@ -8,7 +8,7 @@ use crate::git::worktree_move;
 use crate::output::Output;
 use crate::types::WorktreeEntry;
 use crate::workspace::baum::{load_baum, save_baum};
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{is_baum, validate_workspace_path, Workspace};
 
 /// Options for move command
 pub struct MoveOptions {
@@ -20,18 +20,9 @@ pub struct MoveOptions {
 pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> {
     out.require_human("move")?;
 
-    // Resolve paths relative to workspace
-    let old_container = if opts.old_path.is_absolute() {
-        opts.old_path.clone()
-    } else {
-        ws.root.join(&opts.old_path)
-    };
-
-    let new_container = if opts.new_path.is_absolute() {
-        opts.new_path.clone()
-    } else {
-        ws.root.join(&opts.new_path)
-    };
+    // Resolve paths relative to workspace (with path traversal protection)
+    let old_container = validate_workspace_path(&ws.root, &opts.old_path)?;
+    let new_container = validate_workspace_path(&ws.root, &opts.new_path)?;
 
     // Check source exists
     if !old_container.exists() {

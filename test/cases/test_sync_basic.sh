@@ -39,11 +39,8 @@ begin_test "wald sync updates last_sync in state.yaml"
     # Get current commit
     _current_commit=$(git rev-parse HEAD)
 
-    # Expected behavior: sync should update state.yaml
-    # $WALD_BIN sync
-
-    # Simulate expected result
-    update_last_sync "$_current_commit"
+    # Sync should update state.yaml
+    $WALD_BIN sync
 
     # Verify state updated
     _last_sync=$(get_last_sync)
@@ -218,13 +215,8 @@ begin_test "wald sync initializes state.yaml if missing"
     # Remove state file
     rm -f .wald/state.yaml
 
-    # Expected behavior: sync should recreate it
-    # $WALD_BIN sync
-
-    # Simulate: recreate state file
-    cat > .wald/state.yaml <<EOF
-last_sync: null
-EOF
+    # Sync should recreate it
+    $WALD_BIN sync
 
     assert_file_exists ".wald/state.yaml"
 

@@ -28,6 +28,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize a new wald workspace
+    Init {
+        /// Path to initialize (default: current directory)
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+
+        /// Recreate .wald/ directory if it exists
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Manage repository registry
     Repo {
         #[command(subcommand)]
@@ -153,9 +164,9 @@ enum RepoAction {
         #[arg(long = "alias", action = clap::ArgAction::Append)]
         aliases: Vec<String>,
 
-        /// Clone the repository immediately
+        /// Skip cloning (only add to manifest)
         #[arg(long)]
-        clone: bool,
+        no_clone: bool,
     },
 
     /// List registered repositories
@@ -216,10 +227,20 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
-    // Handle completion command specially (doesn't need workspace)
-    if let Commands::Completion { shell } = cli.command {
-        generate_completions(shell);
-        return Ok(());
+    // Handle commands that don't require an existing workspace
+    match &cli.command {
+        Commands::Completion { shell } => {
+            generate_completions(*shell);
+            return Ok(());
+        }
+        Commands::Init { path, force } => {
+            let opts = commands::init::InitOptions {
+                path: path.clone(),
+                force: *force,
+            };
+            return commands::init(opts, out);
+        }
+        _ => {}
     }
 
     // Load workspace for all other commands
@@ -233,7 +254,7 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
                 depth,
                 upstream,
                 aliases,
-                clone,
+                no_clone,
             } => {
                 let opts = commands::repo::RepoAddOptions {
                     repo_id,
@@ -241,7 +262,7 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
                     depth,
                     upstream,
                     aliases,
-                    clone,
+                    clone: !no_clone, // Clone by default, --no-clone skips
                 };
                 commands::repo_add(&mut ws, opts, out)
             }
@@ -319,6 +340,7 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             commands::doctor(&ws, opts, out)
         }
 
+        Commands::Init { .. } => unreachable!(),
         Commands::Completion { .. } => unreachable!(),
     }
 }

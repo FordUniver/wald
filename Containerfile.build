@@ -1,0 +1,18 @@
+# Minimal Rust build environment for Linux cross-compilation
+#
+# Build with:
+#   container build --platform linux/amd64 -t wald-builder:amd64 -f Containerfile.build .
+#   container build --platform linux/arm64 -t wald-builder:arm64 -f Containerfile.build .
+
+FROM rust:1.83-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add shasum compatibility (macOS command, use sha256sum on Linux)
+RUN printf '#!/bin/sh\nif [ "$1" = "-a" ] && [ "$2" = "256" ]; then shift 2; sha256sum "$@"; else sha1sum "$@"; fi\n' > /usr/local/bin/shasum && \
+    chmod +x /usr/local/bin/shasum
+
+WORKDIR /src

@@ -7,7 +7,7 @@ use crate::naming::worktree_dir_name;
 use crate::output::Output;
 use crate::workspace::baum::{load_baum, save_baum};
 use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{is_baum, validate_workspace_path, Workspace};
 
 /// Options for branch command
 pub struct BranchOptions {
@@ -19,12 +19,8 @@ pub struct BranchOptions {
 pub fn branch(ws: &Workspace, opts: BranchOptions, out: &Output) -> Result<()> {
     out.require_human("branch")?;
 
-    // Resolve path relative to workspace
-    let container = if opts.baum_path.is_absolute() {
-        opts.baum_path.clone()
-    } else {
-        ws.root.join(&opts.baum_path)
-    };
+    // Resolve path relative to workspace (with path traversal protection)
+    let container = validate_workspace_path(&ws.root, &opts.baum_path)?;
 
     // Check if it's a baum
     if !is_baum(&container) {

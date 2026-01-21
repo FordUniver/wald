@@ -17,9 +17,7 @@ fi
 begin_test "wald repo add creates manifest entry"
     setup_wald_workspace
 
-    # Note: This will fail until wald is implemented
-    # For now, we create the expected state manually to validate test infrastructure
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
+    $WALD_BIN repo add --lfs=minimal --depth=100 github.com/test/repo
 
     assert_file_exists ".wald/manifest.yaml"
     assert_file_contains ".wald/manifest.yaml" "github.com/test/repo"
@@ -31,11 +29,7 @@ end_test
 begin_test "wald repo add with custom LFS policy"
     setup_wald_workspace
 
-    # Expected behavior (not yet implemented)
-    # $WALD_BIN repo add --lfs=full github.com/test/large-repo
-
-    # Simulate expected result
-    add_repo_to_manifest "github.com/test/large-repo" "full" "100"
+    $WALD_BIN repo add --lfs=full github.com/test/large-repo
 
     assert_file_contains ".wald/manifest.yaml" "github.com/test/large-repo"
     assert_file_contains ".wald/manifest.yaml" "lfs: full"
@@ -46,11 +40,7 @@ end_test
 begin_test "wald repo add with custom depth"
     setup_wald_workspace
 
-    # Expected behavior (not yet implemented)
-    # $WALD_BIN repo add --depth=50 github.com/test/shallow-repo
-
-    # Simulate expected result
-    add_repo_to_manifest "github.com/test/shallow-repo" "minimal" "50"
+    $WALD_BIN repo add --depth=50 github.com/test/shallow-repo
 
     assert_file_contains ".wald/manifest.yaml" "github.com/test/shallow-repo"
     assert_file_contains ".wald/manifest.yaml" "depth: 50"
@@ -61,11 +51,7 @@ end_test
 begin_test "wald repo add with aliases"
     setup_wald_workspace
 
-    # Expected behavior (not yet implemented)
-    # $WALD_BIN repo add --alias=dots --alias=dotfiles github.com/user/dotfiles
-
-    # Simulate expected result
-    add_repo_with_aliases "github.com/user/dotfiles" "dots" "dotfiles"
+    $WALD_BIN repo add --alias=dots --alias=dotfiles github.com/user/dotfiles
 
     assert_file_contains ".wald/manifest.yaml" "github.com/user/dotfiles"
     assert_file_contains ".wald/manifest.yaml" "aliases"
@@ -76,11 +62,7 @@ end_test
 begin_test "wald repo add with upstream"
     setup_wald_workspace
 
-    # Expected behavior (not yet implemented)
-    # $WALD_BIN repo add --upstream=git.zib.de/docker/ais2t git.zib.de/cspiegel/ais2t
-
-    # Simulate expected result
-    add_repo_with_upstream "git.zib.de/cspiegel/ais2t" "git.zib.de/docker/ais2t" "minimal" "100"
+    $WALD_BIN repo add --upstream=git.zib.de/docker/ais2t git.zib.de/cspiegel/ais2t
 
     assert_file_contains ".wald/manifest.yaml" "git.zib.de/cspiegel/ais2t"
     assert_file_contains ".wald/manifest.yaml" "upstream: git.zib.de/docker/ais2t"
@@ -110,11 +92,11 @@ begin_test "wald repo add prevents duplicate entries"
     setup_wald_workspace
 
     # Add repo once
-    add_repo_to_manifest "github.com/test/repo" "minimal" "100"
+    $WALD_BIN repo add github.com/test/repo
 
-    # Expected behavior: second add should error or update
-    # result=$($WALD_BIN repo add github.com/test/repo 2>&1 || true)
-    # assert_contains "$result" "already exists"
+    # Second add should error or update
+    _result=$($WALD_BIN repo add github.com/test/repo 2>&1 || true)
+    assert_contains "$_result" "already"
 
     # Verify only one entry exists
     _count=$(grep -c "github.com/test/repo" .wald/manifest.yaml || true)

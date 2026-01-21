@@ -250,7 +250,7 @@ git pull --rebase origin main
 # Wald sync would recreate the baum here
 ```
 
-See [ADR-012](../adr/012-multi-machine-sync-testing.md) for detailed rationale.
+The multi-machine setup simulates workspace sync between machines using separate directories.
 
 ## Fixtures
 

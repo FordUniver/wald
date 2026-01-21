@@ -25,10 +25,17 @@ pub fn ensure_gitignore_section(workspace_root: &Path) -> Result<()> {
         String::new()
     };
 
-    // Check if managed section already exists
-    if content.contains(GITIGNORE_MARKER_START) {
+    // Check if section exists and is complete (has markers and all patterns)
+    let has_complete_section = content.contains(GITIGNORE_MARKER_START)
+        && content.contains(GITIGNORE_MARKER_END)
+        && GITIGNORE_PATTERNS.iter().all(|p| content.contains(p));
+
+    if has_complete_section {
         return Ok(());
     }
+
+    // Remove existing incomplete section if present
+    let content = remove_wald_section(&content);
 
     // Create managed section with all patterns
     let patterns = GITIGNORE_PATTERNS.join("\n");
@@ -50,6 +57,39 @@ pub fn ensure_gitignore_section(workspace_root: &Path) -> Result<()> {
         .with_context(|| format!("failed to write .gitignore: {}", gitignore_path.display()))?;
 
     Ok(())
+}
+
+/// Remove existing wald section from gitignore content (inclusive of markers)
+fn remove_wald_section(content: &str) -> String {
+    let start_idx = content.find(GITIGNORE_MARKER_START);
+    let end_idx = content.find(GITIGNORE_MARKER_END);
+
+    match (start_idx, end_idx) {
+        (Some(start), Some(end)) if start < end => {
+            // Find the end of the end marker line
+            let end_line_end = content[end..]
+                .find('\n')
+                .map(|i| end + i + 1)
+                .unwrap_or(content.len());
+
+            // Find start of the start marker line
+            // If marker isn't at position 0, look for preceding newline to include in output
+            let section_start = if start > 0 {
+                content[..start]
+                    .rfind('\n')
+                    .map(|i| i + 1)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
+            let mut result = String::new();
+            result.push_str(&content[..section_start]);
+            result.push_str(&content[end_line_end..]);
+            result
+        }
+        _ => content.to_string(),
+    }
 }
 
 /// Add a worktree pattern to the container's .gitignore
@@ -144,5 +184,50 @@ mod tests {
         let content = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
         let count = content.matches("/_main.wt").count();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_ensure_gitignore_section_repairs_incomplete() {
+        let dir = TempDir::new().unwrap();
+
+        // Write incomplete section (missing patterns)
+        let incomplete = format!(
+            "*.log\n{}\n.wald/repos/\n{}\n",
+            GITIGNORE_MARKER_START, GITIGNORE_MARKER_END
+        );
+        fs::write(dir.path().join(".gitignore"), &incomplete).unwrap();
+
+        // Should repair the incomplete section
+        ensure_gitignore_section(dir.path()).unwrap();
+
+        let content = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+
+        // Should have exactly one section
+        let count = content.matches(GITIGNORE_MARKER_START).count();
+        assert_eq!(count, 1);
+
+        // Should have all patterns
+        assert!(content.contains(".wald/repos/"));
+        assert!(content.contains(".wald/state.yaml"));
+        assert!(content.contains("**/.baum/manifest.local.yaml"));
+        assert!(content.contains("**/_*.wt/"));
+
+        // Should preserve other content
+        assert!(content.contains("*.log"));
+    }
+
+    #[test]
+    fn test_remove_wald_section() {
+        let content =
+            "before\n# wald:start (managed by wald, do not edit)\npattern\n# wald:end\nafter\n";
+        let result = remove_wald_section(content);
+        assert_eq!(result, "before\nafter\n");
+    }
+
+    #[test]
+    fn test_remove_wald_section_no_section() {
+        let content = "*.log\n*.tmp\n";
+        let result = remove_wald_section(content);
+        assert_eq!(result, content);
     }
 }

@@ -6,7 +6,7 @@ use anyhow::{bail, Result};
 use crate::git;
 use crate::output::Output;
 use crate::workspace::baum::{load_baum, save_baum};
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{is_baum, validate_workspace_path, Workspace};
 
 /// Options for prune command
 pub struct PruneOptions {
@@ -19,12 +19,8 @@ pub struct PruneOptions {
 pub fn prune(ws: &Workspace, opts: PruneOptions, out: &Output) -> Result<()> {
     out.require_human("prune")?;
 
-    // Resolve path relative to workspace
-    let container = if opts.baum_path.is_absolute() {
-        opts.baum_path.clone()
-    } else {
-        ws.root.join(&opts.baum_path)
-    };
+    // Resolve path relative to workspace (with path traversal protection)
+    let container = validate_workspace_path(&ws.root, &opts.baum_path)?;
 
     // Check if it's a baum
     if !is_baum(&container) {

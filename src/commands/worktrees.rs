@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 use crate::output::{Output, OutputFormat};
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{is_baum, validate_workspace_path, Workspace};
 
 /// Options for worktrees command
 pub struct WorktreesOptions {
@@ -15,11 +15,8 @@ pub struct WorktreesOptions {
 /// List all worktrees in the workspace
 pub fn worktrees(ws: &Workspace, opts: WorktreesOptions, out: &Output) -> Result<()> {
     let search_root = if let Some(filter) = opts.filter {
-        if filter.is_absolute() {
-            filter
-        } else {
-            ws.root.join(filter)
-        }
+        // Validate filter path (with path traversal protection)
+        validate_workspace_path(&ws.root, &filter)?
     } else {
         ws.root.clone()
     };
