@@ -37,6 +37,19 @@ pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
     // Get current HEAD before pull
     let head_before = get_head_commit(&ws.root)?;
 
+    // Check if upstream is configured
+    if !has_upstream(&ws.root) {
+        out.info("No upstream configured - updating local state only");
+
+        if !opts.dry_run {
+            ws.state.update_last_sync(&head_before);
+            ws.save_state()?;
+        }
+
+        out.success("Sync complete (local only)");
+        return Ok(());
+    }
+
     // Check if local and remote have diverged using git rev-list
     // This is more reliable than parsing error messages
     let (ahead, behind) = get_ahead_behind(&ws.root)?;
@@ -257,6 +270,20 @@ fn move_worktrees_with_git(
     }
 
     Ok(())
+}
+
+/// Check if the current branch has an upstream configured
+fn has_upstream(repo_path: &std::path::Path) -> bool {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .arg("rev-parse")
+        .arg("--abbrev-ref")
+        .arg("--symbolic-full-name")
+        .arg("@{upstream}")
+        .output();
+
+    matches!(output, Ok(o) if o.status.success())
 }
 
 /// Get the number of commits ahead and behind the upstream branch
