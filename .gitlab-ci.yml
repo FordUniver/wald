@@ -1,65 +1,118 @@
 # GitLab CI/CD pipeline for wald
-# Runs tests on every push, builds release artifacts on tags
+#
+# Pipeline structure:
+#
+#   build ──────────────→ test:integration ──→ test:integration:verbose (on failure)
+#     │                          │
+#     │    test:unit ────────────┼──→ test:unit:verbose (on failure)
+#     │         │                │
+#     │         └────────────────┴──→ release:dev (main only, both tests pass)
+#     │
+#     └──→ build:* (tags only) ──→ release (tags only)
+#
+# Future: stress testing, benchmarking (see thread 27afdb)
 
 stages:
-  - test
   - build
+  - test
   - release
 
 variables:
   GIT_DEPTH: 1
   RUST_VERSION: "1.83"
-  YQ_VERSION: "4.44.3"  # Pin yq version for reproducibility
+  YQ_VERSION: "4.44.3"
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+
+# ====================================================================================
+# Build Stage
+# ====================================================================================
+
+# Build release binary for testing and dev releases
+build:
+  stage: build
+  image: rust:${RUST_VERSION}
+  script:
+    - cargo build --release
+    - ./target/release/wald --version
+  artifacts:
+    paths:
+      - target/release/wald
+    expire_in: 1 day
+  cache:
+    key: cargo-build-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      when: never  # Tag builds handled by build:linux-* jobs
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 # ====================================================================================
 # Test Stage
 # ====================================================================================
 
-test:rust:
+# Unit tests (runs in parallel with build)
+test:unit:
   stage: test
   image: rust:${RUST_VERSION}
+  script:
+    - cargo test --lib
+  cache:
+    key: cargo-test-unit-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Unit tests with verbose output (on failure)
+test:unit:verbose:
+  stage: test
+  needs: [test:unit]
+  when: on_failure
+  image: rust:${RUST_VERSION}
+  script:
+    - cargo test --lib -- --nocapture
+
+# Integration tests (uses build artifact)
+test:integration:
+  stage: test
+  needs: [build]
+  image: rust:${RUST_VERSION}
   before_script:
-    # Install system dependencies
     - apt-get update
     - apt-get install -y git git-lfs
-    # Install yq for YAML manipulation in tests
     - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
     - chmod +x /usr/local/bin/yq
-    # Configure git for tests
     - git config --global user.name "CI Test"
     - git config --global user.email "ci@wald.test"
     - git config --global pull.rebase true
     - git config --global rebase.autoStash true
   script:
-    # Run Rust unit tests
-    - echo "Running Rust unit tests..."
-    - cargo test --lib --verbose
-    # Build debug binary for integration tests
-    - echo "Building debug binary..."
-    - cargo build
-    # Run integration tests
-    - echo "Running integration tests..."
-    - cd test && bash run_tests.sh ../target/debug/wald
-  cache:
-    key: cargo-test-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
+    - ./target/release/wald --version
+    - cd test && bash run_tests.sh ../target/release/wald
   artifacts:
     when: on_failure
     paths:
       - test/results/
     expire_in: 1 week
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      when: never
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-# Run tests with verbose output when test:rust fails (for debugging)
-test:verbose:
+# Integration tests with verbose output (on failure)
+test:integration:verbose:
   stage: test
-  needs: [test:rust]
+  needs: [build, test:integration]
   when: on_failure
   image: rust:${RUST_VERSION}
   before_script:
@@ -71,36 +124,50 @@ test:verbose:
     - git config --global user.email "ci@wald.test"
     - git config --global pull.rebase true
   script:
-    - cargo test --lib -- --nocapture
-    - cargo build
-    - cd test && DEBUG=1 bash run_tests.sh ../target/debug/wald
-  cache:
-    key: cargo-test-verbose-${CI_COMMIT_REF_SLUG}
+    - cd test && DEBUG=1 bash run_tests.sh ../target/release/wald
+  artifacts:
+    when: always
     paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
+      - test/results/
+    expire_in: 1 week
 
 # ====================================================================================
-# Build Stage (tags only)
+# Release Stage
+# ====================================================================================
+
+# Dev release: latest passing build from main
+release:dev:
+  stage: release
+  needs: [build, test:unit, test:integration]
+  image: alpine:latest
+  script:
+    - echo "Dev build artifact available from pipeline ${CI_PIPELINE_ID}"
+  artifacts:
+    paths:
+      - target/release/wald
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ====================================================================================
+# Tagged Release Builds
 # ====================================================================================
 
 build:linux-amd64:
   stage: build
   image: rust:${RUST_VERSION}
-  before_script:
-    - rustup target add x86_64-unknown-linux-gnu
   script:
+    - rustup target add x86_64-unknown-linux-gnu
     - cargo build --release --target x86_64-unknown-linux-gnu
     - cp target/x86_64-unknown-linux-gnu/release/wald wald-linux-amd64
-    - ./wald-linux-amd64 --version || echo "Binary created (version check may fail if CLI not implemented)"
+    - ./wald-linux-amd64 --version
   artifacts:
     name: wald-${CI_COMMIT_TAG}-linux-amd64
     paths:
       - wald-linux-amd64
     expire_in: never
   cache:
-    key: cargo-build-${CI_COMMIT_REF_SLUG}
+    key: cargo-release-amd64-${CI_COMMIT_REF_SLUG}
     paths:
       - .cargo/registry
       - .cargo/git
@@ -116,7 +183,7 @@ build:linux-arm64:
     - apt-get install -y gcc-aarch64-linux-gnu
     - rustup target add aarch64-unknown-linux-gnu
   script:
-    - cargo build --release --target aarch64-unknown-linux-gnu
+    - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo build --release --target aarch64-unknown-linux-gnu
     - cp target/aarch64-unknown-linux-gnu/release/wald wald-linux-arm64
   artifacts:
     name: wald-${CI_COMMIT_TAG}-linux-arm64
@@ -124,7 +191,7 @@ build:linux-arm64:
       - wald-linux-arm64
     expire_in: never
   cache:
-    key: cargo-build-arm-${CI_COMMIT_REF_SLUG}
+    key: cargo-release-arm64-${CI_COMMIT_REF_SLUG}
     paths:
       - .cargo/registry
       - .cargo/git
@@ -136,9 +203,8 @@ build:macos-amd64:
   stage: build
   tags:
     - macos
-  before_script:
-    - rustup target add x86_64-apple-darwin
   script:
+    - rustup target add x86_64-apple-darwin
     - cargo build --release --target x86_64-apple-darwin
     - cp target/x86_64-apple-darwin/release/wald wald-macos-amd64
   artifacts:
@@ -154,9 +220,8 @@ build:macos-arm64:
   stage: build
   tags:
     - macos
-  before_script:
-    - rustup target add aarch64-apple-darwin
   script:
+    - rustup target add aarch64-apple-darwin
     - cargo build --release --target aarch64-apple-darwin
     - cp target/aarch64-apple-darwin/release/wald wald-macos-arm64
   artifacts:
@@ -168,12 +233,10 @@ build:macos-arm64:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   allow_failure: true  # macOS runner may not be available
 
-# ====================================================================================
-# Release Stage (tags only)
-# ====================================================================================
-
+# Official release from tag
 release:
   stage: release
+  needs: [build:linux-amd64, build:linux-arm64]
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   script:
     - echo "Creating release for $CI_COMMIT_TAG"
