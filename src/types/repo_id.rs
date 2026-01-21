@@ -26,6 +26,8 @@ pub enum RepoIdError {
     EmptyComponent(String),
     #[error("repo ID requires at least host and one path segment: '{0}'")]
     TooFewSegments(String),
+    #[error("repo ID contains invalid path component '.' or '..': '{0}'")]
+    PathTraversal(String),
 }
 
 impl RepoId {
@@ -50,6 +52,16 @@ impl RepoId {
         // Verify no empty path segments
         if path.iter().any(|p| p.is_empty()) {
             return Err(RepoIdError::EmptyComponent(s.to_string()));
+        }
+
+        // Reject path traversal attempts (. and ..)
+        if path.iter().any(|p| p == "." || p == "..") {
+            return Err(RepoIdError::PathTraversal(s.to_string()));
+        }
+
+        // Also reject . and .. in host
+        if host == "." || host == ".." {
+            return Err(RepoIdError::PathTraversal(s.to_string()));
         }
 
         Ok(Self {
@@ -265,5 +277,35 @@ mod tests {
         // Overleaf uses HTTPS and only project ID
         let id = RepoId::parse("git.overleaf.com/abc123").unwrap();
         assert_eq!(id.to_clone_url(), "https://git.overleaf.com/abc123");
+    }
+
+    // Path traversal protection tests
+
+    #[test]
+    fn test_parse_rejects_dotdot_in_path() {
+        let result = RepoId::parse("github.com/user/../etc/passwd");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RepoIdError::PathTraversal(_)));
+    }
+
+    #[test]
+    fn test_parse_rejects_dot_in_path() {
+        let result = RepoId::parse("github.com/./repo");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RepoIdError::PathTraversal(_)));
+    }
+
+    #[test]
+    fn test_parse_rejects_dotdot_as_host() {
+        let result = RepoId::parse("../user/repo");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RepoIdError::PathTraversal(_)));
+    }
+
+    #[test]
+    fn test_parse_rejects_traversal_at_end() {
+        let result = RepoId::parse("github.com/user/..");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RepoIdError::PathTraversal(_)));
     }
 }
