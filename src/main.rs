@@ -134,7 +134,7 @@ enum Commands {
 enum RepoAction {
     /// Add a repository to the registry
     Add {
-        /// Repository ID (host/owner/name)
+        /// Repository ID (host/path, e.g., github.com/user/repo)
         repo_id: String,
 
         /// LFS fetch policy

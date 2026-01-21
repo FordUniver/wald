@@ -58,7 +58,7 @@ pub struct RepoEntry {
 /// Central manifest (.wald/manifest.yaml)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Manifest {
-    /// Registered repositories keyed by repo_id (host/owner/name)
+    /// Registered repositories keyed by repo_id (host/path)
     #[serde(default)]
     pub repos: HashMap<String, RepoEntry>,
 }
