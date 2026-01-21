@@ -179,7 +179,10 @@ fn parse_lfs(s: &str) -> Result<LfsPolicy, String> {
         "full" => Ok(LfsPolicy::Full),
         "minimal" => Ok(LfsPolicy::Minimal),
         "skip" => Ok(LfsPolicy::Skip),
-        _ => Err(format!("Invalid LFS policy: {}. Use full, minimal, or skip", s)),
+        _ => Err(format!(
+            "Invalid LFS policy: {}. Use full, minimal, or skip",
+            s
+        )),
     }
 }
 

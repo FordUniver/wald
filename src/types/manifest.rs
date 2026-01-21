@@ -246,9 +246,7 @@ mod tests {
         let resolved = manifest.resolve_alias("shared");
         assert!(resolved.is_some());
         let resolved_id = resolved.unwrap();
-        assert!(
-            resolved_id == "github.com/user/repo1" || resolved_id == "github.com/user/repo2"
-        );
+        assert!(resolved_id == "github.com/user/repo1" || resolved_id == "github.com/user/repo2");
     }
 
     #[test]
@@ -271,10 +269,9 @@ mod tests {
     #[test]
     fn test_has_repo_with_direct_match() {
         let mut manifest = Manifest::default();
-        manifest.repos.insert(
-            "github.com/user/repo".to_string(),
-            RepoEntry::default(),
-        );
+        manifest
+            .repos
+            .insert("github.com/user/repo".to_string(), RepoEntry::default());
 
         assert!(manifest.has_repo("github.com/user/repo"));
         assert!(!manifest.has_repo("github.com/other/repo"));

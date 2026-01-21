@@ -14,7 +14,11 @@ pub struct MoveEntry {
 /// Detect baum moves between two commits using `git diff -M`
 ///
 /// Returns moves of .baum/manifest.yaml files, which indicate baum relocations.
-pub fn detect_moves(repo_path: &Path, from_commit: &str, to_commit: &str) -> Result<Vec<MoveEntry>> {
+pub fn detect_moves(
+    repo_path: &Path,
+    from_commit: &str,
+    to_commit: &str,
+) -> Result<Vec<MoveEntry>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(repo_path)
@@ -25,7 +29,7 @@ pub fn detect_moves(repo_path: &Path, from_commit: &str, to_commit: &str) -> Res
         .arg("--diff-filter=R")
         .arg(format!("{}..{}", from_commit, to_commit))
         .output()
-        .with_context(|| format!("failed to run git diff for move detection"))?;
+        .with_context(|| "failed to run git diff for move detection")?;
 
     if !output.status.success() {
         // Empty result on error (not a fatal condition)

@@ -24,9 +24,7 @@ pub fn clone_bare(repo_id: &RepoId, target: &Path, depth: Option<u32>) -> Result
 
     // Use git command for clone (libgit2 has limited shallow clone support)
     let mut cmd = Command::new("git");
-    cmd.arg("clone")
-        .arg("--bare")
-        .arg("--quiet");
+    cmd.arg("clone").arg("--bare").arg("--quiet");
 
     if let Some(d) = depth {
         cmd.arg(format!("--depth={}", d));

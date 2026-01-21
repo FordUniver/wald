@@ -5,8 +5,8 @@ use anyhow::{bail, Result};
 
 use crate::git;
 use crate::output::Output;
-use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::load_baum;
+use crate::workspace::{is_baum, Workspace};
 
 /// Options for uproot command
 pub struct UprootOptions {
@@ -16,6 +16,8 @@ pub struct UprootOptions {
 
 /// Uproot a baum (remove container and worktrees)
 pub fn uproot(ws: &Workspace, opts: UprootOptions, out: &Output) -> Result<()> {
+    out.require_human("uproot")?;
+
     // Resolve path relative to workspace
     let container = if opts.path.is_absolute() {
         opts.path.clone()

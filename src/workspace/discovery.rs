@@ -58,14 +58,12 @@ impl Workspace {
     pub fn load_from(root: PathBuf) -> Result<Self> {
         let wald_dir = root.join(WALD_DIR);
 
-        let manifest = Manifest::load(&wald_dir.join("manifest.yaml"))
-            .context("failed to load manifest")?;
+        let manifest =
+            Manifest::load(&wald_dir.join("manifest.yaml")).context("failed to load manifest")?;
 
-        let config = Config::load(&wald_dir.join("config.yaml"))
-            .unwrap_or_default();
+        let config = Config::load(&wald_dir.join("config.yaml")).unwrap_or_default();
 
-        let state = SyncState::load(&wald_dir.join("state.yaml"))
-            .unwrap_or_default();
+        let state = SyncState::load(&wald_dir.join("state.yaml")).unwrap_or_default();
 
         Ok(Self {
             root,
@@ -135,7 +133,11 @@ mod tests {
         let wald = dir.path().join(".wald");
         fs::create_dir_all(&wald).unwrap();
         fs::write(wald.join("manifest.yaml"), "repos: {}").unwrap();
-        fs::write(wald.join("config.yaml"), "default_lfs: minimal\ndefault_depth: 100").unwrap();
+        fs::write(
+            wald.join("config.yaml"),
+            "default_lfs: minimal\ndefault_depth: 100",
+        )
+        .unwrap();
         dir
     }
 

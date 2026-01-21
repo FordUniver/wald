@@ -5,8 +5,8 @@ use walkdir::WalkDir;
 
 use crate::git;
 use crate::output::Output;
-use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::load_baum;
+use crate::workspace::{is_baum, Workspace};
 
 /// Options for doctor command
 pub struct DoctorOptions {
@@ -15,6 +15,8 @@ pub struct DoctorOptions {
 
 /// Check workspace health and optionally repair issues
 pub fn doctor(ws: &Workspace, opts: DoctorOptions, out: &Output) -> Result<()> {
+    out.require_human("doctor")?;
+
     let mut issues = Vec::new();
 
     out.status("Checking", "workspace structure");
@@ -42,7 +44,7 @@ pub fn doctor(ws: &Workspace, opts: DoctorOptions, out: &Output) -> Result<()> {
     out.status("Checking", "registered repositories");
 
     // Check each registered repo
-    for (repo_id, _entry) in &ws.manifest.repos {
+    for repo_id in ws.manifest.repos.keys() {
         if let Ok(bare_path) = ws.bare_repo_path(repo_id) {
             if !bare_path.exists() {
                 issues.push(Issue {
@@ -66,7 +68,12 @@ pub fn doctor(ws: &Workspace, opts: DoctorOptions, out: &Output) -> Result<()> {
             if name == ".git" {
                 return false;
             }
-            if name == "repos" && e.path().parent().map(|p| p.ends_with(".wald")).unwrap_or(false) {
+            if name == "repos"
+                && e.path()
+                    .parent()
+                    .map(|p| p.ends_with(".wald"))
+                    .unwrap_or(false)
+            {
                 return false;
             }
             // Skip worktree directories (no need to descend into them)
@@ -91,10 +98,21 @@ pub fn doctor(ws: &Workspace, opts: DoctorOptions, out: &Output) -> Result<()> {
     if issues.is_empty() {
         out.success("No issues found");
     } else {
-        let errors = issues.iter().filter(|i| i.severity == Severity::Error).count();
-        let warnings = issues.iter().filter(|i| i.severity == Severity::Warning).count();
+        let errors = issues
+            .iter()
+            .filter(|i| i.severity == Severity::Error)
+            .count();
+        let warnings = issues
+            .iter()
+            .filter(|i| i.severity == Severity::Warning)
+            .count();
 
-        println!("Found {} issue(s) ({} errors, {} warnings)", issues.len(), errors, warnings);
+        println!(
+            "Found {} issue(s) ({} errors, {} warnings)",
+            issues.len(),
+            errors,
+            warnings
+        );
         println!();
 
         for issue in &issues {
@@ -135,11 +153,7 @@ fn check_baum(
         Err(e) => {
             issues.push(Issue {
                 severity: Severity::Error,
-                message: format!(
-                    "Invalid baum manifest at {}: {}",
-                    baum_path.display(),
-                    e
-                ),
+                message: format!("Invalid baum manifest at {}: {}", baum_path.display(), e),
                 fix: None,
             });
             return Ok(());
@@ -198,10 +212,7 @@ fn check_baum(
             if !wt_path.join(".git").exists() {
                 issues.push(Issue {
                     severity: Severity::Error,
-                    message: format!(
-                        "Invalid worktree (missing .git): {}",
-                        wt_path.display()
-                    ),
+                    message: format!("Invalid worktree (missing .git): {}", wt_path.display()),
                     fix: None,
                 });
             }
@@ -211,10 +222,7 @@ fn check_baum(
             if !worktree_list.iter().any(|w| w.path == wt_path_str) {
                 issues.push(Issue {
                     severity: Severity::Warning,
-                    message: format!(
-                        "Worktree not in git's list: {}",
-                        wt_path.display()
-                    ),
+                    message: format!("Worktree not in git's list: {}", wt_path.display()),
                     fix: None,
                 });
             }

@@ -1,13 +1,13 @@
-/// Branch name normalization for safe directory names
-///
-/// Git branch names can contain characters that are problematic for directory names:
-/// - `/` (common in feature/foo, bugfix/bar patterns)
-/// - Spaces
-/// - Backslashes (on Windows)
-/// - Other special characters
-///
-/// This module provides normalization to create safe worktree directory names
-/// while preserving the original branch name in the manifest.
+//! Branch name normalization for safe directory names.
+//!
+//! Git branch names can contain characters that are problematic for directory names:
+//! - `/` (common in feature/foo, bugfix/bar patterns)
+//! - Spaces
+//! - Backslashes (on Windows)
+//! - Other special characters
+//!
+//! This module provides normalization to create safe worktree directory names
+//! while preserving the original branch name in the manifest.
 
 /// Normalize a branch name for use as a directory component
 ///
@@ -75,12 +75,18 @@ mod tests {
     #[test]
     fn test_feature_branch_with_slash() {
         assert_eq!(normalize_branch_for_path("feature/foo"), "feature--foo");
-        assert_eq!(normalize_branch_for_path("bugfix/issue-123"), "bugfix--issue-123");
+        assert_eq!(
+            normalize_branch_for_path("bugfix/issue-123"),
+            "bugfix--issue-123"
+        );
     }
 
     #[test]
     fn test_nested_slashes() {
-        assert_eq!(normalize_branch_for_path("feature/foo/bar"), "feature--foo--bar");
+        assert_eq!(
+            normalize_branch_for_path("feature/foo/bar"),
+            "feature--foo--bar"
+        );
     }
 
     #[test]

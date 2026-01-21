@@ -90,12 +90,9 @@ pub fn remove_worktree(bare_repo: &Path, worktree_path: &Path, force: bool) -> R
 
     cmd.arg(worktree_path);
 
-    let output = cmd.output().with_context(|| {
-        format!(
-            "failed to remove worktree at {}",
-            worktree_path.display()
-        )
-    })?;
+    let output = cmd
+        .output()
+        .with_context(|| format!("failed to remove worktree at {}", worktree_path.display()))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -134,7 +131,7 @@ pub fn list_worktrees(bare_repo: &Path) -> Result<Vec<WorktreeInfo>> {
 }
 
 /// Information about a worktree
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct WorktreeInfo {
     pub path: String,
     pub head: Option<String>,
@@ -143,20 +140,6 @@ pub struct WorktreeInfo {
     pub detached: bool,
     pub locked: bool,
     pub prunable: bool,
-}
-
-impl Default for WorktreeInfo {
-    fn default() -> Self {
-        Self {
-            path: String::new(),
-            head: None,
-            branch: None,
-            bare: false,
-            detached: false,
-            locked: false,
-            prunable: false,
-        }
-    }
 }
 
 fn parse_worktree_list(output: &str) -> Result<Vec<WorktreeInfo>> {

@@ -5,9 +5,9 @@ use anyhow::{bail, Result};
 use crate::git;
 use crate::naming::worktree_dir_name;
 use crate::output::Output;
-use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::{load_baum, save_baum};
-use crate::workspace::gitignore::add_worktree_to_gitignore;
+use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
+use crate::workspace::{is_baum, Workspace};
 
 /// Options for branch command
 pub struct BranchOptions {
@@ -17,6 +17,8 @@ pub struct BranchOptions {
 
 /// Add a worktree for a branch to an existing baum
 pub fn branch(ws: &Workspace, opts: BranchOptions, out: &Output) -> Result<()> {
+    out.require_human("branch")?;
+
     // Resolve path relative to workspace
     let container = if opts.baum_path.is_absolute() {
         opts.baum_path.clone()
@@ -32,11 +34,18 @@ pub fn branch(ws: &Workspace, opts: BranchOptions, out: &Output) -> Result<()> {
         );
     }
 
+    // Ensure workspace-level .gitignore has wald section
+    ensure_gitignore_section(&ws.root)?;
+
     // Load baum manifest
     let mut baum_manifest = load_baum(&container)?;
 
     // Check if branch already has a worktree
-    if baum_manifest.worktrees.iter().any(|wt| wt.branch == opts.branch) {
+    if baum_manifest
+        .worktrees
+        .iter()
+        .any(|wt| wt.branch == opts.branch)
+    {
         bail!(
             "worktree for branch '{}' already exists in baum",
             opts.branch
@@ -53,7 +62,10 @@ pub fn branch(ws: &Workspace, opts: BranchOptions, out: &Output) -> Result<()> {
     let worktree_name = worktree_dir_name(&opts.branch);
     let worktree_path = container.join(&worktree_name);
 
-    out.status("Adding worktree", &format!("{} -> {}", opts.branch, worktree_name));
+    out.status(
+        "Adding worktree",
+        &format!("{} -> {}", opts.branch, worktree_name),
+    );
 
     git::add_worktree(&bare_path, &worktree_path, &opts.branch)?;
 

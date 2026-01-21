@@ -72,6 +72,38 @@ test:unit:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
+# Formatting check (runs in parallel with unit tests)
+lint:fmt:
+  stage: test
+  image: rust:${RUST_VERSION}
+  script:
+    - rustup component add rustfmt
+    - cargo fmt --check
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Clippy lint check (runs in parallel with unit tests)
+lint:clippy:
+  stage: test
+  image: rust:${RUST_VERSION}
+  script:
+    - rustup component add clippy
+    - cargo clippy --all-targets -- -D warnings
+  cache:
+    key: cargo-clippy-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
 # Unit tests with verbose output (on failure)
 test:unit:verbose:
   stage: test

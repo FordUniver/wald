@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use walkdir::WalkDir;
 
 use crate::output::{Output, OutputFormat};
-use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::load_baum;
+use crate::workspace::{is_baum, Workspace};
 
 /// Show workspace status
 pub fn status(ws: &Workspace, out: &Output) -> Result<()> {
@@ -63,7 +63,12 @@ pub fn status(ws: &Workspace, out: &Output) -> Result<()> {
             if name == ".git" {
                 return false;
             }
-            if name == "repos" && e.path().parent().map(|p| p.ends_with(".wald")).unwrap_or(false) {
+            if name == "repos"
+                && e.path()
+                    .parent()
+                    .map(|p| p.ends_with(".wald"))
+                    .unwrap_or(false)
+            {
                 return false;
             }
             // Skip worktree directories (no need to descend into them)
@@ -72,13 +77,12 @@ pub fn status(ws: &Workspace, out: &Output) -> Result<()> {
             }
             true
         })
+        .flatten()
     {
-        if let Ok(entry) = entry {
-            if entry.file_type().is_dir() && is_baum(entry.path()) {
-                baum_count += 1;
-                if let Ok(baum) = load_baum(entry.path()) {
-                    worktree_count += baum.worktrees.len();
-                }
+        if entry.file_type().is_dir() && is_baum(entry.path()) {
+            baum_count += 1;
+            if let Ok(baum) = load_baum(entry.path()) {
+                worktree_count += baum.worktrees.len();
             }
         }
     }
@@ -109,7 +113,10 @@ pub fn status(ws: &Workspace, out: &Output) -> Result<()> {
 
             // Counts
             println!("Repos: {} registered", ws.manifest.repos.len());
-            println!("Baums: {} planted ({} worktrees)", baum_count, worktree_count);
+            println!(
+                "Baums: {} planted ({} worktrees)",
+                baum_count, worktree_count
+            );
         }
         OutputFormat::Json => {
             let status = serde_json::json!({

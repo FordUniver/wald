@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 
+use anyhow::{bail, Result};
+
 /// Output format
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OutputFormat {
@@ -26,6 +28,18 @@ impl Default for Output {
 impl Output {
     pub fn new(format: OutputFormat, verbose: bool) -> Self {
         Self { format, verbose }
+    }
+
+    /// Check that JSON output is not requested for commands that don't support it.
+    /// Call this at the start of commands without JSON support.
+    pub fn require_human(&self, command: &str) -> Result<()> {
+        if self.format == OutputFormat::Json {
+            bail!(
+                "JSON output is not supported for '{}' command",
+                command
+            );
+        }
+        Ok(())
     }
 
     /// Print a status message (action: target)

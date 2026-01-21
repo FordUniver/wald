@@ -44,10 +44,7 @@ impl RepoId {
             return Err(RepoIdError::EmptyComponent(s.to_string()));
         }
 
-        let path: Vec<String> = parts[1..]
-            .iter()
-            .map(|p| p.trim().to_string())
-            .collect();
+        let path: Vec<String> = parts[1..].iter().map(|p| p.trim().to_string()).collect();
 
         // Verify no empty path segments
         if path.iter().any(|p| p.is_empty()) {
@@ -195,7 +192,10 @@ mod tests {
     #[test]
     fn test_to_bare_path_subgroup() {
         let id = RepoId::parse("git.zib.de/iol/research/project").unwrap();
-        assert_eq!(id.to_bare_path(), PathBuf::from("git.zib.de/iol/research/project.git"));
+        assert_eq!(
+            id.to_bare_path(),
+            PathBuf::from("git.zib.de/iol/research/project.git")
+        );
     }
 
     #[test]

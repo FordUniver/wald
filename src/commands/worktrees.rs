@@ -4,8 +4,8 @@ use anyhow::Result;
 use walkdir::WalkDir;
 
 use crate::output::{Output, OutputFormat};
-use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::load_baum;
+use crate::workspace::{is_baum, Workspace};
 
 /// Options for worktrees command
 pub struct WorktreesOptions {
@@ -36,7 +36,12 @@ pub fn worktrees(ws: &Workspace, opts: WorktreesOptions, out: &Output) -> Result
             if name == ".git" {
                 return false;
             }
-            if name == "repos" && e.path().parent().map(|p| p.ends_with(".wald")).unwrap_or(false) {
+            if name == "repos"
+                && e.path()
+                    .parent()
+                    .map(|p| p.ends_with(".wald"))
+                    .unwrap_or(false)
+            {
                 return false;
             }
             // Skip worktree directories (no need to descend into them)
@@ -54,7 +59,9 @@ pub fn worktrees(ws: &Workspace, opts: WorktreesOptions, out: &Output) -> Result
         if entry.file_type().is_dir() && is_baum(entry.path()) {
             // Load baum and get worktrees
             if let Ok(baum) = load_baum(entry.path()) {
-                let container_path = entry.path().strip_prefix(&ws.root)
+                let container_path = entry
+                    .path()
+                    .strip_prefix(&ws.root)
                     .unwrap_or(entry.path())
                     .to_path_buf();
 
@@ -74,6 +81,9 @@ pub fn worktrees(ws: &Workspace, opts: WorktreesOptions, out: &Output) -> Result
         out.info("No worktrees found");
         return Ok(());
     }
+
+    // Sort for deterministic output: by container, then by branch
+    all_worktrees.sort_by(|a, b| (&a.container, &a.branch).cmp(&(&b.container, &b.branch)));
 
     match out.format {
         OutputFormat::Human => {

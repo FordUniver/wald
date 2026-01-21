@@ -6,8 +6,8 @@ use anyhow::{bail, Context, Result};
 use crate::git::history::detect_moves;
 use crate::git::shell::get_head_commit;
 use crate::output::Output;
-use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::load_baum;
+use crate::workspace::{is_baum, Workspace};
 
 /// Options for sync command
 pub struct SyncOptions {
@@ -18,6 +18,8 @@ pub struct SyncOptions {
 
 /// Sync workspace with remote, replaying moves
 pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
+    out.require_human("sync")?;
+
     // Check for uncommitted changes
     let status_output = Command::new("git")
         .arg("-C")
@@ -29,13 +31,22 @@ pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
 
     let status = String::from_utf8_lossy(&status_output.stdout);
     if !status.trim().is_empty() {
-        bail!(
-            "uncommitted changes in workspace\nCommit or stash changes before syncing"
-        );
+        bail!("uncommitted changes in workspace\nCommit or stash changes before syncing");
     }
 
     // Get current HEAD before pull
     let head_before = get_head_commit(&ws.root)?;
+
+    // Check if local and remote have diverged using git rev-list
+    // This is more reliable than parsing error messages
+    let (ahead, behind) = get_ahead_behind(&ws.root)?;
+    if ahead > 0 && behind > 0 && !opts.force {
+        bail!(
+            "workspace has diverged from remote ({} ahead, {} behind)\nUse --force to force sync",
+            ahead,
+            behind
+        );
+    }
 
     // Get last sync point
     let last_sync = ws.state.last_sync.clone();
@@ -55,11 +66,6 @@ pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr);
-            if stderr.contains("diverged") && !opts.force {
-                bail!(
-                    "workspace has diverged from remote\nUse --force to force sync"
-                );
-            }
             bail!("git pull failed: {}", stderr);
         }
     }
@@ -237,18 +243,49 @@ fn move_worktrees_with_git(
             // Use git worktree move to relocate and update registry
             match worktree_move(bare_path, &old_wt, &new_wt) {
                 Ok(()) => {
-                    out.status("Moved", &format!("worktree {} -> {}", old_wt.display(), new_wt.display()));
+                    out.status(
+                        "Moved",
+                        &format!("worktree {} -> {}", old_wt.display(), new_wt.display()),
+                    );
                 }
                 Err(e) => {
                     // Log warning but continue with other worktrees
-                    out.warn(&format!(
-                        "Failed to move worktree {}: {}",
-                        wt.path, e
-                    ));
+                    out.warn(&format!("Failed to move worktree {}: {}", wt.path, e));
                 }
             }
         }
     }
 
     Ok(())
+}
+
+/// Get the number of commits ahead and behind the upstream branch
+fn get_ahead_behind(repo_path: &std::path::Path) -> Result<(u32, u32)> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .arg("rev-list")
+        .arg("--left-right")
+        .arg("--count")
+        .arg("HEAD...@{upstream}")
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let parts: Vec<&str> = stdout.trim().split('\t').collect();
+            if parts.len() == 2 {
+                let ahead = parts[0].parse::<u32>().unwrap_or(0);
+                let behind = parts[1].parse::<u32>().unwrap_or(0);
+                Ok((ahead, behind))
+            } else {
+                // Couldn't parse, assume not diverged
+                Ok((0, 0))
+            }
+        }
+        _ => {
+            // No upstream or error, assume not diverged
+            Ok((0, 0))
+        }
+    }
 }

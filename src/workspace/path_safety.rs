@@ -47,7 +47,10 @@ pub fn validate_workspace_path(root: &Path, path: &Path) -> Result<PathBuf> {
                     path.display()
                 );
             }
-            Component::Normal(_) | Component::CurDir | Component::RootDir | Component::Prefix(_) => {
+            Component::Normal(_)
+            | Component::CurDir
+            | Component::RootDir
+            | Component::Prefix(_) => {
                 // Normal components and . are fine
             }
         }

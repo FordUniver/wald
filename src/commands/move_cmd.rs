@@ -6,9 +6,9 @@ use anyhow::{bail, Context, Result};
 
 use crate::git::worktree_move;
 use crate::output::Output;
-use crate::workspace::{is_baum, Workspace};
-use crate::workspace::baum::{load_baum, save_baum};
 use crate::types::WorktreeEntry;
+use crate::workspace::baum::{load_baum, save_baum};
+use crate::workspace::{is_baum, Workspace};
 
 /// Options for move command
 pub struct MoveOptions {
@@ -18,6 +18,8 @@ pub struct MoveOptions {
 
 /// Move a baum to a new location
 pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> {
+    out.require_human("move")?;
+
     // Resolve paths relative to workspace
     let old_container = if opts.old_path.is_absolute() {
         opts.old_path.clone()
@@ -46,10 +48,7 @@ pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> 
 
     // Check destination doesn't exist
     if new_container.exists() {
-        bail!(
-            "destination already exists: {}",
-            new_container.display()
-        );
+        bail!("destination already exists: {}", new_container.display());
     }
 
     // Ensure parent of destination exists
@@ -62,11 +61,7 @@ pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> 
 
     out.status(
         "Moving",
-        &format!(
-            "{} -> {}",
-            opts.old_path.display(),
-            opts.new_path.display()
-        ),
+        &format!("{} -> {}", opts.old_path.display(), opts.new_path.display()),
     );
 
     // Get bare repo path
@@ -82,7 +77,11 @@ pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> 
         let new_wt_path = new_container.join(&wt.path);
 
         if old_wt_path.exists() {
-            out.verbose(&format!("Moving worktree: {} -> {}", wt.path, new_wt_path.display()));
+            out.verbose(&format!(
+                "Moving worktree: {} -> {}",
+                wt.path,
+                new_wt_path.display()
+            ));
 
             // Use git worktree move to properly update git's internal references
             worktree_move(&bare_path, &old_wt_path, &new_wt_path)

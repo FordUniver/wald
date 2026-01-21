@@ -19,6 +19,8 @@ pub struct RepoAddOptions {
 
 /// Add a repository to the manifest
 pub fn repo_add(ws: &mut Workspace, opts: RepoAddOptions, out: &Output) -> Result<()> {
+    out.require_human("repo add")?;
+
     // Validate repo ID
     let id = RepoId::parse(&opts.repo_id)?;
     let repo_id = id.as_str();
@@ -33,7 +35,8 @@ pub fn repo_add(ws: &mut Workspace, opts: RepoAddOptions, out: &Output) -> Resul
         if let Some(existing) = ws.manifest.resolve_alias(alias) {
             bail!(
                 "alias '{}' already in use by repository: {}",
-                alias, existing
+                alias,
+                existing
             );
         }
     }
@@ -41,7 +44,9 @@ pub fn repo_add(ws: &mut Workspace, opts: RepoAddOptions, out: &Output) -> Resul
     // Create entry with defaults from config
     let entry = RepoEntry {
         lfs: opts.lfs.unwrap_or_else(|| ws.config.default_lfs.clone()),
-        depth: opts.depth.unwrap_or_else(|| ws.config.default_depth.clone()),
+        depth: opts
+            .depth
+            .unwrap_or_else(|| ws.config.default_depth.clone()),
         upstream: opts.upstream,
         aliases: opts.aliases,
     };
@@ -77,9 +82,14 @@ pub fn repo_list(ws: &Workspace, out: &Output) -> Result<()> {
         return Ok(());
     }
 
+    // Sort repo IDs for deterministic output
+    let mut repo_ids: Vec<_> = ws.manifest.repos.keys().collect();
+    repo_ids.sort();
+
     match out.format {
         OutputFormat::Human => {
-            for (repo_id, entry) in &ws.manifest.repos {
+            for repo_id in &repo_ids {
+                let entry = &ws.manifest.repos[*repo_id];
                 let mut info = vec![];
 
                 // LFS policy
@@ -118,7 +128,9 @@ pub fn repo_list(ws: &Workspace, out: &Output) -> Result<()> {
             }
         }
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&ws.manifest.repos)?;
+            // Sort keys in JSON output for determinism
+            let sorted: std::collections::BTreeMap<_, _> = ws.manifest.repos.iter().collect();
+            let json = serde_json::to_string_pretty(&sorted)?;
             println!("{}", json);
         }
     }
@@ -128,6 +140,8 @@ pub fn repo_list(ws: &Workspace, out: &Output) -> Result<()> {
 
 /// Remove a repository from the manifest
 pub fn repo_remove(ws: &mut Workspace, repo_ref: &str, out: &Output) -> Result<()> {
+    out.require_human("repo remove")?;
+
     // Resolve alias to repo ID
     let repo_id = ws
         .resolve_repo(repo_ref)
@@ -145,6 +159,8 @@ pub fn repo_remove(ws: &mut Workspace, repo_ref: &str, out: &Output) -> Result<(
 
 /// Fetch updates for repositories
 pub fn repo_fetch(ws: &Workspace, repo_ref: Option<&str>, out: &Output) -> Result<()> {
+    out.require_human("repo fetch")?;
+
     let repos: Vec<(String, PathBuf)> = if let Some(r) = repo_ref {
         // Fetch specific repo
         let repo_id = ws

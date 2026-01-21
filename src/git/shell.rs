@@ -107,9 +107,7 @@ pub fn get_head_commit(repo: &Path) -> Result<String> {
         );
     }
 
-    let commit = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
+    let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     Ok(commit)
 }
@@ -262,8 +260,8 @@ mod tests {
         // Try to move non-existent file
         let result = git_mv(
             dir.path(),
-            &Path::new("nonexistent.txt"),
-            &Path::new("target.txt"),
+            Path::new("nonexistent.txt"),
+            Path::new("target.txt"),
         );
 
         assert!(result.is_err());
@@ -297,8 +295,7 @@ mod tests {
             .unwrap();
 
         // Now git mv
-        let target = Path::new("target.txt");
-        let result = git_mv(dir.path(), Path::new("source.txt"), target);
+        let result = git_mv(dir.path(), Path::new("source.txt"), Path::new("target.txt"));
 
         assert!(result.is_ok());
         assert!(dir.path().join("target.txt").exists());

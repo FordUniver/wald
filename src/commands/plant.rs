@@ -5,8 +5,8 @@ use anyhow::{bail, Result};
 use crate::git;
 use crate::naming::worktree_dir_name;
 use crate::output::Output;
+use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
 use crate::workspace::{create_baum, is_baum, Workspace};
-use crate::workspace::gitignore::add_worktree_to_gitignore;
 
 /// Options for plant command
 pub struct PlantOptions {
@@ -17,6 +17,8 @@ pub struct PlantOptions {
 
 /// Plant a baum (create container with worktrees)
 pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()> {
+    out.require_human("plant")?;
+
     // Resolve repo reference to ID
     let repo_id = ws
         .resolve_repo(&opts.repo_ref)
@@ -32,6 +34,9 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
             repo_id
         );
     }
+
+    // Ensure workspace-level .gitignore has wald section
+    ensure_gitignore_section(&ws.root)?;
 
     // Resolve container path (relative to workspace root)
     let container = if opts.container.is_absolute() {
@@ -65,7 +70,10 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
         opts.branches
     };
 
-    out.status("Planting", &format!("{} at {}", repo_id, opts.container.display()));
+    out.status(
+        "Planting",
+        &format!("{} at {}", repo_id, opts.container.display()),
+    );
 
     // Create baum
     let mut baum_manifest = create_baum(&container, &repo_id)?;
@@ -75,7 +83,10 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
         let worktree_name = worktree_dir_name(branch);
         let worktree_path = container.join(&worktree_name);
 
-        out.status("Creating worktree", &format!("{} -> {}", branch, worktree_name));
+        out.status(
+            "Creating worktree",
+            &format!("{} -> {}", branch, worktree_name),
+        );
 
         // Add worktree
         git::add_worktree(&bare_path, &worktree_path, branch)?;
