@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 
 use crate::git;
+use crate::naming::worktree_dir_name;
 use crate::output::Output;
 use crate::workspace::{create_baum, is_baum, Workspace};
 use crate::workspace::gitignore::add_worktree_to_gitignore;
@@ -71,7 +72,7 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
 
     // Create worktrees for each branch
     for branch in &branches {
-        let worktree_name = format!("_{}.wt", branch);
+        let worktree_name = worktree_dir_name(branch);
         let worktree_path = container.join(&worktree_name);
 
         out.status("Creating worktree", &format!("{} -> {}", branch, worktree_name));

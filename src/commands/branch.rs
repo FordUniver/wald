@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 
 use crate::git;
+use crate::naming::worktree_dir_name;
 use crate::output::Output;
 use crate::workspace::{is_baum, Workspace};
 use crate::workspace::baum::{load_baum, save_baum};
@@ -49,7 +50,7 @@ pub fn branch(ws: &Workspace, opts: BranchOptions, out: &Output) -> Result<()> {
     }
 
     // Create worktree
-    let worktree_name = format!("_{}.wt", opts.branch);
+    let worktree_name = worktree_dir_name(&opts.branch);
     let worktree_path = container.join(&worktree_name);
 
     out.status("Adding worktree", &format!("{} -> {}", opts.branch, worktree_name));

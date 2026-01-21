@@ -28,6 +28,16 @@ pub fn repo_add(ws: &mut Workspace, opts: RepoAddOptions, out: &Output) -> Resul
         bail!("repository already registered: {}", repo_id);
     }
 
+    // Check for alias conflicts
+    for alias in &opts.aliases {
+        if let Some(existing) = ws.manifest.resolve_alias(alias) {
+            bail!(
+                "alias '{}' already in use by repository: {}",
+                alias, existing
+            );
+        }
+    }
+
     // Create entry with defaults from config
     let entry = RepoEntry {
         lfs: opts.lfs.unwrap_or_else(|| ws.config.default_lfs.clone()),

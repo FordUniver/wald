@@ -31,9 +31,19 @@ pub fn worktrees(ws: &Workspace, opts: WorktreesOptions, out: &Output) -> Result
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
-            // Skip .git directories and .wald/repos
+            // Skip .git directories, .wald/repos, and _*.wt worktree directories
             let name = e.file_name().to_string_lossy();
-            name != ".git" && !(name == "repos" && e.path().parent().map(|p| p.ends_with(".wald")).unwrap_or(false))
+            if name == ".git" {
+                return false;
+            }
+            if name == "repos" && e.path().parent().map(|p| p.ends_with(".wald")).unwrap_or(false) {
+                return false;
+            }
+            // Skip worktree directories (no need to descend into them)
+            if e.file_type().is_dir() && name.starts_with('_') && name.ends_with(".wt") {
+                return false;
+            }
+            true
         })
     {
         let entry = match entry {
