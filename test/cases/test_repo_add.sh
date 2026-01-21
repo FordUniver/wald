@@ -17,7 +17,7 @@ fi
 begin_test "wald repo add creates manifest entry"
     setup_wald_workspace
 
-    $WALD_BIN repo add --lfs=minimal --depth=100 github.com/test/repo
+    $WALD_BIN repo add --no-clone --lfs=minimal --depth=100 github.com/test/repo
 
     assert_file_exists ".wald/manifest.yaml"
     assert_file_contains ".wald/manifest.yaml" "github.com/test/repo"
@@ -29,7 +29,7 @@ end_test
 begin_test "wald repo add with custom LFS policy"
     setup_wald_workspace
 
-    $WALD_BIN repo add --lfs=full github.com/test/large-repo
+    $WALD_BIN repo add --no-clone --lfs=full github.com/test/large-repo
 
     assert_file_contains ".wald/manifest.yaml" "github.com/test/large-repo"
     assert_file_contains ".wald/manifest.yaml" "lfs: full"
@@ -40,7 +40,7 @@ end_test
 begin_test "wald repo add with custom depth"
     setup_wald_workspace
 
-    $WALD_BIN repo add --depth=50 github.com/test/shallow-repo
+    $WALD_BIN repo add --no-clone --depth=50 github.com/test/shallow-repo
 
     assert_file_contains ".wald/manifest.yaml" "github.com/test/shallow-repo"
     assert_file_contains ".wald/manifest.yaml" "depth: 50"
@@ -51,7 +51,7 @@ end_test
 begin_test "wald repo add with aliases"
     setup_wald_workspace
 
-    $WALD_BIN repo add --alias=dots --alias=dotfiles github.com/user/dotfiles
+    $WALD_BIN repo add --no-clone --alias=dots --alias=dotfiles github.com/user/dotfiles
 
     assert_file_contains ".wald/manifest.yaml" "github.com/user/dotfiles"
     assert_file_contains ".wald/manifest.yaml" "aliases"
@@ -62,7 +62,7 @@ end_test
 begin_test "wald repo add with upstream"
     setup_wald_workspace
 
-    $WALD_BIN repo add --upstream=git.zib.de/docker/ais2t git.zib.de/cspiegel/ais2t
+    $WALD_BIN repo add --no-clone --upstream=git.zib.de/docker/ais2t git.zib.de/cspiegel/ais2t
 
     assert_file_contains ".wald/manifest.yaml" "git.zib.de/cspiegel/ais2t"
     assert_file_contains ".wald/manifest.yaml" "upstream: git.zib.de/docker/ais2t"
@@ -92,10 +92,10 @@ begin_test "wald repo add prevents duplicate entries"
     setup_wald_workspace
 
     # Add repo once
-    $WALD_BIN repo add github.com/test/repo
+    $WALD_BIN repo add --no-clone github.com/test/repo
 
     # Second add should error or update
-    _result=$($WALD_BIN repo add github.com/test/repo 2>&1 || true)
+    _result=$($WALD_BIN repo add --no-clone github.com/test/repo 2>&1 || true)
     assert_contains "$_result" "already"
 
     # Verify only one entry exists

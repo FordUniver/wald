@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION=$(cat "$REPO_ROOT/VERSION" | tr -d '\n')
+VERSION=""  # Will default to VERSION file if not overridden
 
 # Detect current platform
 case "$(uname -s)-$(uname -m)" in
@@ -39,6 +39,11 @@ while [[ $# -gt 0 ]]; do
       PLATFORMS="$2"
       shift 2
       ;;
+    --version)
+      [[ $# -lt 2 || "$2" == --* ]] && { echo "Error: --version requires a value" >&2; exit 1; }
+      VERSION="$2"
+      shift 2
+      ;;
     --checksums)
       GENERATE_CHECKSUMS=true
       shift
@@ -53,6 +58,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Default version from VERSION file if not specified
+if [[ -z "$VERSION" ]]; then
+  VERSION=$(cat "$REPO_ROOT/VERSION" | tr -d '\n')
+fi
 
 # ============================================================================
 # Platform-specific build functions
@@ -96,7 +106,7 @@ build_linux_amd64() {
     --arch amd64 \
     --mount type=bind,source="$REPO_ROOT",target=/src \
     wald-builder:amd64 \
-    /src/build-linux.sh linux-amd64
+    /src/build-linux.sh linux-amd64 "$VERSION"
 }
 
 build_linux_arm64() {
@@ -116,7 +126,7 @@ build_linux_arm64() {
     --arch arm64 \
     --mount type=bind,source="$REPO_ROOT",target=/src \
     wald-builder:arm64 \
-    /src/build-linux.sh linux-arm64
+    /src/build-linux.sh linux-arm64 "$VERSION"
 }
 
 # ============================================================================

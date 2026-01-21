@@ -75,10 +75,7 @@ fn remove_wald_section(content: &str) -> String {
             // Find start of the start marker line
             // If marker isn't at position 0, look for preceding newline to include in output
             let section_start = if start > 0 {
-                content[..start]
-                    .rfind('\n')
-                    .map(|i| i + 1)
-                    .unwrap_or(0)
+                content[..start].rfind('\n').map(|i| i + 1).unwrap_or(0)
             } else {
                 0
             };

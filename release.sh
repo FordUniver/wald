@@ -79,11 +79,10 @@ fi
 if [[ "$DEV_RELEASE" == "true" ]]; then
   BASE_VERSION=$(cat "$REPO_ROOT/VERSION" | tr -d '\n')
   VERSION="${BASE_VERSION}-dev"
-  ARTIFACT_VERSION="$BASE_VERSION"  # Artifacts use base version
+  ARTIFACT_VERSION="dev"            # Artifacts use "dev" for dev releases
   SKIP_BUMP=true
   NO_PUSH=true
   # darwin-amd64 cross-compile requires x86_64 OpenSSL, skip for now
-  # ARM binary works on Intel Macs via Rosetta 2
   PLATFORMS="${PLATFORMS:-darwin-arm64,linux-amd64,linux-arm64}"
 else
   ARTIFACT_VERSION="$VERSION"       # For full releases, artifacts match version
@@ -159,9 +158,9 @@ echo ""
 echo "Step 3: Building for platforms: $PLATFORMS..."
 
 if [[ "$DRY_RUN" == "true" ]]; then
-  echo "  Would run: ./build-all.sh --platform $PLATFORMS --checksums"
+  echo "  Would run: ./build-all.sh --platform $PLATFORMS --version $ARTIFACT_VERSION --checksums"
 else
-  "$REPO_ROOT/build-all.sh" --platform "$PLATFORMS" --checksums
+  "$REPO_ROOT/build-all.sh" --platform "$PLATFORMS" --version "$ARTIFACT_VERSION" --checksums
 fi
 
 echo ""

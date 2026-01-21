@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-VERSION=$(cat /src/VERSION)
 PLATFORM="${1:-linux-amd64}"
+VERSION="${2:-$(cat /src/VERSION)}"
 
 echo "=== Building wald for $PLATFORM ==="
 echo ""

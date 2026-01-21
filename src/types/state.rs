@@ -31,8 +31,9 @@ impl SyncState {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create state directory: {}", parent.display()))?;
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("failed to create state directory: {}", parent.display())
+                })?;
             }
         }
 

@@ -161,8 +161,9 @@ impl Workspace {
                 );
             }
             // Remove existing .wald/ for recreation
-            fs::remove_dir_all(&wald_dir)
-                .with_context(|| format!("failed to remove existing .wald/: {}", wald_dir.display()))?;
+            fs::remove_dir_all(&wald_dir).with_context(|| {
+                format!("failed to remove existing .wald/: {}", wald_dir.display())
+            })?;
         }
 
         // Create .wald/ directory structure
