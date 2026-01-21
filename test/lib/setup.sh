@@ -149,9 +149,8 @@ setup_multi_machine() {
     git config user.email "alpha@wald.local"
     git config pull.rebase true
     git config rebase.autoStash true
-
-    # Ensure main branch exists (empty repo clone doesn't create any branch)
-    git checkout -b main --quiet 2>/dev/null || true
+    # Set branch name for first commit in empty repo
+    git symbolic-ref HEAD refs/heads/main
 
     # Create .wald/ structure
     mkdir -p .wald/{repos,state}
