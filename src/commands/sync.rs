@@ -76,9 +76,11 @@ pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
             push_changes(ws, &opts, out)?;
         }
 
-        // Update last sync
-        ws.state.update_last_sync(&head_after);
-        ws.save_state()?;
+        // Update last sync (only if not dry-run)
+        if !opts.dry_run {
+            ws.state.update_last_sync(&head_after);
+            ws.save_state()?;
+        }
 
         return Ok(());
     }
@@ -105,9 +107,11 @@ pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
         push_changes(ws, &opts, out)?;
     }
 
-    // Update last sync
-    ws.state.update_last_sync(&head_after);
-    ws.save_state()?;
+    // Update last sync (only if not dry-run)
+    if !opts.dry_run {
+        ws.state.update_last_sync(&head_after);
+        ws.save_state()?;
+    }
 
     out.success("Sync complete");
 
@@ -146,7 +150,8 @@ fn replay_move(ws: &Workspace, old_path: &str, new_path: &str, out: &Output) -> 
     // - Old path may have orphaned worktrees (not git-tracked, so not removed)
     // - New path has .baum directory (git-tracked, so moved by git)
     //
-    // We need to move the worktrees to the new location.
+    // We need to move the worktrees to the new location using `git worktree move`
+    // to properly update the bare repo's worktree registry.
 
     let old_exists = old_abs.exists();
     let new_exists = new_abs.exists();
@@ -157,15 +162,16 @@ fn replay_move(ws: &Workspace, old_path: &str, new_path: &str, out: &Output) -> 
         // Both paths exist - check if we can merge
         if !old_is_baum && new_is_baum {
             // Old has orphaned worktrees, new has .baum from git
-            // Move worktree directories from old to new
-            move_worktrees(&old_abs, &new_abs)?;
+            // Use git worktree move to relocate each worktree
+            let baum = load_baum(&new_abs)?;
+            let bare_path = ws.bare_repo_path(&baum.repo_id)?;
+
+            move_worktrees_with_git(&bare_path, &old_abs, &new_abs, &baum.worktrees, out)?;
+
             // Clean up old directory if empty
             if old_abs.read_dir()?.next().is_none() {
                 fs::remove_dir(&old_abs)?;
             }
-            // Update worktree paths in bare repo
-            let baum = load_baum(&new_abs)?;
-            update_worktree_paths(ws, &baum.repo_id, old_path, new_path)?;
         } else if old_is_baum && new_is_baum {
             // True conflict - both are complete baums
             out.warn(&format!(
@@ -187,53 +193,62 @@ fn replay_move(ws: &Workspace, old_path: &str, new_path: &str, out: &Output) -> 
         if old_is_baum {
             // Get bare repo to update worktree references
             let baum = load_baum(&old_abs)?;
+            let bare_path = ws.bare_repo_path(&baum.repo_id)?;
 
             // Ensure parent exists
             if let Some(parent) = new_abs.parent() {
                 fs::create_dir_all(parent)?;
             }
 
-            // Move the directory
-            fs::rename(&old_abs, &new_abs)?;
+            // Move the .baum directory (tracked content)
+            let old_baum_dir = old_abs.join(".baum");
+            let new_baum_dir = new_abs.join(".baum");
+            fs::create_dir_all(&new_abs)?;
+            fs::rename(&old_baum_dir, &new_baum_dir)?;
 
-            // Update worktree paths in bare repo
-            update_worktree_paths(ws, &baum.repo_id, old_path, new_path)?;
-        }
-    }
+            // Move worktrees using git worktree move
+            move_worktrees_with_git(&bare_path, &old_abs, &new_abs, &baum.worktrees, out)?;
 
-    Ok(())
-}
-
-/// Move worktree directories from old baum location to new baum location
-fn move_worktrees(old_path: &std::path::Path, new_path: &std::path::Path) -> Result<()> {
-    for entry in fs::read_dir(old_path)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-
-        // Move _*.wt directories (worktrees)
-        if name_str.starts_with('_') && name_str.ends_with(".wt") {
-            let old_wt = entry.path();
-            let new_wt = new_path.join(&name);
-            if !new_wt.exists() {
-                fs::rename(&old_wt, &new_wt)?;
+            // Clean up old directory if empty
+            if old_abs.exists() && old_abs.read_dir()?.next().is_none() {
+                fs::remove_dir(&old_abs)?;
             }
         }
     }
+
     Ok(())
 }
 
-fn update_worktree_paths(
-    ws: &Workspace,
-    repo_id: &str,
-    _old_container: &str,
-    _new_container: &str,
+/// Move worktrees using `git worktree move` to properly update the registry
+fn move_worktrees_with_git(
+    bare_path: &std::path::Path,
+    old_container: &std::path::Path,
+    new_container: &std::path::Path,
+    worktrees: &[crate::types::WorktreeEntry],
+    out: &Output,
 ) -> Result<()> {
-    // Get bare repo path
-    let bare_path = ws.bare_repo_path(repo_id)?;
+    use crate::git::shell::worktree_move;
 
-    // Prune stale worktree references
-    crate::git::shell::worktree_prune(&bare_path)?;
+    for wt in worktrees {
+        let old_wt = old_container.join(&wt.path);
+        let new_wt = new_container.join(&wt.path);
+
+        if old_wt.exists() && !new_wt.exists() {
+            // Use git worktree move to relocate and update registry
+            match worktree_move(bare_path, &old_wt, &new_wt) {
+                Ok(()) => {
+                    out.status("Moved", &format!("worktree {} -> {}", old_wt.display(), new_wt.display()));
+                }
+                Err(e) => {
+                    // Log warning but continue with other worktrees
+                    out.warn(&format!(
+                        "Failed to move worktree {}: {}",
+                        wt.path, e
+                    ));
+                }
+            }
+        }
+    }
 
     Ok(())
 }

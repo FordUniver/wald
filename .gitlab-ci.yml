@@ -35,9 +35,12 @@ test:rust:
     # Run Rust unit tests
     - echo "Running Rust unit tests..."
     - cargo test --lib --verbose
+    # Build debug binary for integration tests
+    - echo "Building debug binary..."
+    - cargo build
     # Run integration tests
     - echo "Running integration tests..."
-    - cd test && bash run_tests.sh
+    - cd test && bash run_tests.sh ../target/debug/wald
   cache:
     key: cargo-test-${CI_COMMIT_REF_SLUG}
     paths:
@@ -67,7 +70,8 @@ test:verbose:
     - git config --global pull.rebase true
   script:
     - cargo test --lib -- --nocapture
-    - cd test && DEBUG=1 bash run_tests.sh
+    - cargo build
+    - cd test && DEBUG=1 bash run_tests.sh ../target/debug/wald
   cache:
     key: cargo-test-verbose-${CI_COMMIT_REF_SLUG}
     paths:
