@@ -88,7 +88,7 @@ test:integration:
   image: rust:${RUST_VERSION}
   before_script:
     - apt-get update
-    - apt-get install -y git git-lfs
+    - apt-get install -y git git-lfs jq
     - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
     - chmod +x /usr/local/bin/yq
     - git config --global user.name "CI Test"
@@ -117,7 +117,7 @@ test:integration:verbose:
   image: rust:${RUST_VERSION}
   before_script:
     - apt-get update
-    - apt-get install -y git git-lfs
+    - apt-get install -y git git-lfs jq
     - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
     - chmod +x /usr/local/bin/yq
     - git config --global user.name "CI Test"

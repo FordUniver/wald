@@ -178,10 +178,10 @@ EOF
 # wald:end
 EOF
 
-    # Commit and push initial structure
+    # Commit and push initial structure (use -u to set up tracking)
     git add .wald/ .gitignore
     git commit --quiet -m "Initialize wald workspace"
-    git push --quiet origin main
+    git push --quiet -u origin main
 
     # Update bare repo's HEAD to point to main (so clones checkout main by default)
     git -C "$TEST_REMOTES/workspace.git" symbolic-ref HEAD refs/heads/main
