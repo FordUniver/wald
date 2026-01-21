@@ -34,10 +34,7 @@ impl Output {
     /// Call this at the start of commands without JSON support.
     pub fn require_human(&self, command: &str) -> Result<()> {
         if self.format == OutputFormat::Json {
-            bail!(
-                "JSON output is not supported for '{}' command",
-                command
-            );
+            bail!("JSON output is not supported for '{}' command", command);
         }
         Ok(())
     }
