@@ -82,7 +82,9 @@ if [[ "$DEV_RELEASE" == "true" ]]; then
   ARTIFACT_VERSION="$BASE_VERSION"  # Artifacts use base version
   SKIP_BUMP=true
   NO_PUSH=true
-  PLATFORMS="${PLATFORMS:-native}"  # Default to native for dev
+  # darwin-amd64 cross-compile requires x86_64 OpenSSL, skip for now
+  # ARM binary works on Intel Macs via Rosetta 2
+  PLATFORMS="${PLATFORMS:-darwin-arm64,linux-amd64,linux-arm64}"
 else
   ARTIFACT_VERSION="$VERSION"       # For full releases, artifacts match version
   PLATFORMS="${PLATFORMS:-all}"     # Default to all for full release
@@ -270,10 +272,16 @@ if [[ "$SHOULD_CREATE_RELEASE" == "true" ]]; then
         echo "  Deleting existing dev release (if any)..."
         glab release delete dev --repo "$PROJECT_PATH" --yes 2>/dev/null || true
 
+        HEAD_HASH=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
+        HEAD_HASH_FULL=$(git -C "$REPO_ROOT" rev-parse HEAD)
+
         echo "  Uploading ${#ARTIFACTS[@]} artifacts..."
         glab release create dev \
           --name "Development Build" \
-          --notes "Latest development build from main branch ($(date -u +%Y-%m-%d))" \
+          --notes "Development build from main branch
+
+**Commit:** [\`$HEAD_HASH\`](https://git.zib.de/$PROJECT_PATH/-/commit/$HEAD_HASH_FULL)
+**Date:** $(date -u +%Y-%m-%d' '%H:%M' UTC')" \
           --ref main \
           --repo "$PROJECT_PATH" \
           "${ARTIFACTS[@]}"
