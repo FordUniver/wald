@@ -1,6 +1,6 @@
 [package]
 name = "wald"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 description = "Git workspace manager: bare repos, worktrees, and cross-machine sync"
 authors = ["Christoph Spiegel"]
