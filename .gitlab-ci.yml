@@ -2,13 +2,15 @@
 #
 # Pipeline structure:
 #
-#   build ──────────────→ test:integration ──→ test:integration:verbose (on failure)
-#     │                          │
-#     │    test:unit ────────────┼──→ test:unit:verbose (on failure)
-#     │         │                │
-#     │         └────────────────┴──→ release:dev (main only, both tests pass)
+#   build ──→ test:integration
+#     │              │
+#     │    test:unit─┤
+#     │         │    │
+#     │    lint:fmt──┤
+#     │         │    │
+#     │    lint:clippy
 #     │
-#     └──→ build:* (tags only) ──→ release (tags only)
+#     └──→ release (tags only, binaries built locally)
 #
 # Future: stress testing, benchmarking (see thread 27afdb)
 
@@ -59,7 +61,7 @@ test:unit:
   stage: test
   image: rust:${RUST_VERSION}
   script:
-    - cargo test --lib
+    - cargo test --lib -- --nocapture
   cache:
     key: cargo-test-unit-${CI_COMMIT_REF_SLUG}
     paths:
@@ -104,15 +106,6 @@ lint:clippy:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-# Unit tests with verbose output (on failure)
-test:unit:verbose:
-  stage: test
-  needs: [test:unit]
-  when: on_failure
-  image: rust:${RUST_VERSION}
-  script:
-    - cargo test --lib -- --nocapture
-
 # Integration tests (uses build artifact)
 test:integration:
   stage: test
@@ -130,7 +123,7 @@ test:integration:
     - git config --global rebase.autoStash true
   script:
     - ./target/release/wald --version
-    - cd test && bash run_tests.sh ../target/release/wald
+    - cd test && DEBUG=1 bash run_tests.sh ../target/release/wald
   artifacts:
     when: on_failure
     paths:
@@ -142,132 +135,17 @@ test:integration:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-# Integration tests with verbose output (on failure)
-test:integration:verbose:
-  stage: test
-  needs: [build, test:integration]
-  when: on_failure
-  image: debian:bookworm-slim
-  before_script:
-    - apt-get update
-    - apt-get install -y git git-lfs jq wget ca-certificates
-    - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
-    - echo "a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7  /usr/local/bin/yq" | sha256sum -c -
-    - chmod +x /usr/local/bin/yq
-    - git config --global user.name "CI Test"
-    - git config --global user.email "ci@wald.test"
-    - git config --global pull.rebase true
-  script:
-    - cd test && DEBUG=1 bash run_tests.sh ../target/release/wald
-  artifacts:
-    when: always
-    paths:
-      - test/results/
-    expire_in: 1 week
-
 # ====================================================================================
-# Tagged Release Builds (local builds, CI just creates release entry)
+# Release Stage (tags only, binaries built locally via release script)
 # ====================================================================================
 
-build:linux-amd64:
-  stage: build
-  image: rust:${RUST_VERSION}
-  script:
-    - rustup target add x86_64-unknown-linux-gnu
-    - cargo build --release --target x86_64-unknown-linux-gnu
-    - cp target/x86_64-unknown-linux-gnu/release/wald wald-linux-amd64
-    - ./wald-linux-amd64 --version
-  artifacts:
-    name: wald-${CI_COMMIT_TAG}-linux-amd64
-    paths:
-      - wald-linux-amd64
-    expire_in: never
-  cache:
-    key: cargo-release-amd64-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-
-build:linux-arm64:
-  stage: build
-  image: rust:${RUST_VERSION}
-  before_script:
-    - apt-get update
-    - apt-get install -y gcc-aarch64-linux-gnu
-    - rustup target add aarch64-unknown-linux-gnu
-  script:
-    - CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo build --release --target aarch64-unknown-linux-gnu
-    - cp target/aarch64-unknown-linux-gnu/release/wald wald-linux-arm64
-  artifacts:
-    name: wald-${CI_COMMIT_TAG}-linux-arm64
-    paths:
-      - wald-linux-arm64
-    expire_in: never
-  cache:
-    key: cargo-release-arm64-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-
-build:macos-amd64:
-  stage: build
-  tags:
-    - macos
-  script:
-    - rustup target add x86_64-apple-darwin
-    - cargo build --release --target x86_64-apple-darwin
-    - cp target/x86_64-apple-darwin/release/wald wald-macos-amd64
-  artifacts:
-    name: wald-${CI_COMMIT_TAG}-macos-amd64
-    paths:
-      - wald-macos-amd64
-    expire_in: never
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-  allow_failure: true  # macOS runner may not be available
-
-build:macos-arm64:
-  stage: build
-  tags:
-    - macos
-  script:
-    - rustup target add aarch64-apple-darwin
-    - cargo build --release --target aarch64-apple-darwin
-    - cp target/aarch64-apple-darwin/release/wald wald-macos-arm64
-  artifacts:
-    name: wald-${CI_COMMIT_TAG}-macos-arm64
-    paths:
-      - wald-macos-arm64
-    expire_in: never
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-  allow_failure: true  # macOS runner may not be available
-
-# Official release from tag
 release:
   stage: release
-  needs: [build:linux-amd64, build:linux-arm64]
-  image: registry.gitlab.com/gitlab-org/release-cli:v0.18.0
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
   script:
     - echo "Creating release for $CI_COMMIT_TAG"
   release:
     tag_name: $CI_COMMIT_TAG
     description: "Release $CI_COMMIT_TAG"
-    assets:
-      links:
-        - name: "Linux AMD64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/wald-linux-amd64?job=build:linux-amd64"
-        - name: "Linux ARM64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/wald-linux-arm64?job=build:linux-arm64"
-        - name: "macOS AMD64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/wald-macos-amd64?job=build:macos-amd64"
-        - name: "macOS ARM64"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/wald-macos-arm64?job=build:macos-arm64"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
