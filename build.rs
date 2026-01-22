@@ -12,7 +12,15 @@ fn main() {
         .or_else(|| {
             // Try git describe with only proper semver tags (exclude -suffix tags)
             let describe = Command::new("git")
-                .args(["describe", "--tags", "--match", "v[0-9]*", "--exclude", "*-*", "--always"])
+                .args([
+                    "describe",
+                    "--tags",
+                    "--match",
+                    "v[0-9]*",
+                    "--exclude",
+                    "*-*",
+                    "--always",
+                ])
                 .output()
                 .ok()
                 .and_then(|o| String::from_utf8(o.stdout).ok())
