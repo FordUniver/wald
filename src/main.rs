@@ -12,7 +12,7 @@ use wald::workspace::Workspace;
 #[derive(Parser)]
 #[command(name = "wald")]
 #[command(about = "Git workspace manager: bare repos, worktrees, and cross-machine sync")]
-#[command(version)]
+#[command(version = env!("WALD_VERSION"))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
