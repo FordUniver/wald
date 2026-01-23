@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 description = "Git workspace manager: bare repos, worktrees, and cross-machine sync"
 authors = ["Christoph Spiegel"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
