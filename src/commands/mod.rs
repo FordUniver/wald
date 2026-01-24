@@ -15,7 +15,7 @@ pub use doctor::doctor;
 pub use init::init;
 pub use move_cmd::move_baum;
 pub use plant::plant;
-pub use prune::prune;
+pub use prune::{prune, prune_branches};
 pub use repo::{repo_add, repo_fetch, repo_gc, repo_list, repo_remove};
 pub use status::status;
 pub use sync::sync;

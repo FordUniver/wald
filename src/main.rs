@@ -61,6 +61,14 @@ enum Commands {
         /// Branches to create worktrees for (default: default branch)
         #[arg(trailing_var_arg = true)]
         branches: Vec<String>,
+
+        /// Delete existing local branch, create fresh from origin
+        #[arg(long, conflicts_with = "reuse")]
+        force: bool,
+
+        /// Use existing local branch as-is (skip if has unpushed commits)
+        #[arg(long)]
+        reuse: bool,
     },
 
     /// Uproot a baum (remove container and worktrees)
@@ -91,20 +99,33 @@ enum Commands {
 
         /// Branch name
         branch: String,
+
+        /// Delete existing local branch, create fresh from origin
+        #[arg(long, conflicts_with = "reuse")]
+        force: bool,
+
+        /// Use existing local branch as-is (skip if has unpushed commits)
+        #[arg(long)]
+        reuse: bool,
     },
 
-    /// Remove worktrees for branches from a baum
+    /// Remove worktrees for branches from a baum, or clean up orphan branches
     Prune {
-        /// Path to the baum container
-        baum: PathBuf,
+        /// Path to the baum container (required unless --branches)
+        #[arg(required_unless_present = "cleanup_branches")]
+        baum: Option<PathBuf>,
 
-        /// Branches to remove
-        #[arg(required = true)]
+        /// Branches to remove (required unless --branches)
+        #[arg(required_unless_present = "cleanup_branches")]
         branches: Vec<String>,
 
         /// Force removal even with uncommitted changes
         #[arg(short, long)]
         force: bool,
+
+        /// Clean up orphan wald/* branches (workspace-wide)
+        #[arg(long = "branches", conflicts_with_all = ["baum", "branches"])]
+        cleanup_branches: bool,
     },
 
     /// List all worktrees in the workspace
@@ -325,11 +346,15 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             repo,
             container,
             branches,
+            force,
+            reuse,
         } => {
             let opts = commands::plant::PlantOptions {
                 repo_ref: repo,
                 container,
                 branches,
+                force,
+                reuse,
             };
             commands::plant(&mut ws, opts, out)
         }
@@ -344,10 +369,17 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             commands::move_baum(&ws, opts, out)
         }
 
-        Commands::Branch { baum, branch } => {
+        Commands::Branch {
+            baum,
+            branch,
+            force,
+            reuse,
+        } => {
             let opts = commands::branch::BranchOptions {
                 baum_path: baum,
                 branch,
+                force,
+                reuse,
             };
             commands::branch(&ws, opts, out)
         }
@@ -356,13 +388,18 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             baum,
             branches,
             force,
+            cleanup_branches,
         } => {
-            let opts = commands::prune::PruneOptions {
-                baum_path: baum,
-                branches,
-                force,
-            };
-            commands::prune(&ws, opts, out)
+            if cleanup_branches {
+                commands::prune_branches(&ws, force, out)
+            } else {
+                let opts = commands::prune::PruneOptions {
+                    baum_path: baum.expect("baum required"),
+                    branches,
+                    force,
+                };
+                commands::prune(&ws, opts, out)
+            }
         }
 
         Commands::Worktrees { filter } => {

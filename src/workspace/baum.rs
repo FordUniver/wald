@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -41,7 +42,9 @@ pub fn create_baum(container: &Path, repo_id: &str) -> Result<BaumManifest> {
         .with_context(|| format!("failed to create baum directory: {}", baum_dir.display()))?;
 
     // Create initial manifest
+    // ID will be generated on first save when worktrees are added
     let manifest = BaumManifest {
+        id: None,
         repo_id: repo_id.to_string(),
         worktrees: vec![],
     };
@@ -62,6 +65,18 @@ pub fn load_baum(container: &Path) -> Result<BaumManifest> {
 pub fn save_baum(container: &Path, manifest: &BaumManifest) -> Result<()> {
     let manifest_path = container.join(BAUM_DIR).join("manifest.yaml");
     manifest.save(&manifest_path)
+}
+
+/// Save a baum manifest, auto-generating an ID if missing
+///
+/// The existing_ids set is used to avoid ID collisions.
+pub fn save_baum_with_id(
+    container: &Path,
+    manifest: &mut BaumManifest,
+    existing_ids: &HashSet<String>,
+) -> Result<()> {
+    manifest.ensure_id(existing_ids);
+    save_baum(container, manifest)
 }
 
 #[cfg(test)]

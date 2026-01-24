@@ -148,19 +148,43 @@ begin_test "wald plant fails if container already exists as file"
     teardown_wald_workspace
 end_test
 
-begin_test "wald plant fails if baum already planted"
+begin_test "wald plant adds worktrees to existing baum"
     setup_wald_workspace
 
     create_bare_repo "github.com/test/repo" "with_commits"
     $WALD_BIN repo add "github.com/test/repo"
     $WALD_BIN plant "github.com/test/repo" "tools/repo" main
 
-    # Second plant should fail
-    _result=$($WALD_BIN plant "github.com/test/repo" "tools/repo" dev 2>&1 || true)
-    assert_contains "$_result" "already planted"
+    # Second plant should add to existing baum
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" dev
 
-    # Verify first plant succeeded
+    # Verify both worktrees exist
     assert_dir_exists "tools/repo/.baum"
+    assert_worktree_exists "tools/repo/_main.wt"
+    assert_worktree_exists "tools/repo/_dev.wt"
+    assert_baum_has_worktree "tools/repo" "main"
+    assert_baum_has_worktree "tools/repo" "dev"
+
+    # Verify bare repo registry has both
+    assert_bare_worktree_count "github.com/test/repo" 2
+
+    teardown_wald_workspace
+end_test
+
+begin_test "wald plant on existing baum fails if branch exists"
+    setup_wald_workspace
+
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
+
+    # Second plant with same branch should fail
+    _result=$($WALD_BIN plant "github.com/test/repo" "tools/repo" main 2>&1 || true)
+    assert_contains "$_result" "already exists"
+
+    # Verify original plant still intact
+    assert_dir_exists "tools/repo/.baum"
+    assert_worktree_exists "tools/repo/_main.wt"
 
     teardown_wald_workspace
 end_test

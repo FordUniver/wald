@@ -1,10 +1,13 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use walkdir::WalkDir;
 
-use crate::types::{Config, Manifest, SyncState};
+use crate::types::{BaumManifest, Config, Manifest, SyncState};
+use crate::workspace::baum::{is_baum, load_baum, BAUM_DIR};
 use crate::workspace::gitignore::ensure_gitignore_section;
 
 /// The wald directory name
@@ -195,6 +198,79 @@ impl Workspace {
     pub fn is_git_repo(path: &Path) -> bool {
         path.join(".git").exists()
     }
+
+    /// Find all baums in the workspace
+    ///
+    /// Returns a list of (path, manifest) pairs for all discovered baums.
+    pub fn find_all_baums(&self) -> Vec<(PathBuf, BaumManifest)> {
+        find_all_baums(&self.root)
+    }
+
+    /// Collect all baum IDs in the workspace
+    ///
+    /// Returns a set of IDs for all baums that have them assigned.
+    pub fn collect_baum_ids(&self) -> HashSet<String> {
+        collect_baum_ids(&self.root)
+    }
+}
+
+/// Find all baums in a workspace directory
+///
+/// Returns a list of (path, manifest) pairs for all discovered baums.
+pub fn find_all_baums(workspace_root: &Path) -> Vec<(PathBuf, BaumManifest)> {
+    let mut baums = Vec::new();
+
+    for entry in WalkDir::new(workspace_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            // Skip .git directories, .wald/repos, and _*.wt worktree directories
+            let name = e.file_name().to_string_lossy();
+            if name == ".git" {
+                return false;
+            }
+            if name == "repos"
+                && e.path()
+                    .parent()
+                    .map(|p| p.ends_with(".wald"))
+                    .unwrap_or(false)
+            {
+                return false;
+            }
+            // Skip worktree directories (no need to descend into them)
+            if e.file_type().is_dir() && name.starts_with('_') && name.ends_with(".wt") {
+                return false;
+            }
+            // Skip .baum directories themselves
+            if name == BAUM_DIR {
+                return false;
+            }
+            true
+        })
+    {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        if entry.file_type().is_dir() && is_baum(entry.path()) {
+            if let Ok(manifest) = load_baum(entry.path()) {
+                baums.push((entry.path().to_path_buf(), manifest));
+            }
+        }
+    }
+
+    baums
+}
+
+/// Collect all baum IDs in a workspace directory
+///
+/// Returns a set of IDs for all baums that have them assigned.
+pub fn collect_baum_ids(workspace_root: &Path) -> HashSet<String> {
+    find_all_baums(workspace_root)
+        .into_iter()
+        .filter_map(|(_, manifest)| manifest.id)
+        .collect()
 }
 
 #[cfg(test)]

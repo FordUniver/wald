@@ -82,6 +82,7 @@ pub fn move_baum(ws: &Workspace, opts: MoveOptions, out: &Output) -> Result<()> 
         updated_worktrees.push(WorktreeEntry {
             branch: wt.branch.clone(),
             path: wt.path.clone(),
+            local_branch: wt.local_branch.clone(),
         });
     }
 

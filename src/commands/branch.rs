@@ -7,12 +7,26 @@ use crate::naming::worktree_dir_name;
 use crate::output::Output;
 use crate::workspace::baum::{load_baum, save_baum};
 use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
-use crate::workspace::{is_baum, validate_workspace_path, Workspace};
+use crate::workspace::{collect_baum_ids, is_baum, validate_workspace_path, Workspace};
 
 /// Options for branch command
 pub struct BranchOptions {
     pub baum_path: PathBuf,
     pub branch: String,
+    pub force: bool,
+    pub reuse: bool,
+}
+
+impl BranchOptions {
+    pub fn branch_mode(&self) -> git::BranchMode {
+        if self.force {
+            git::BranchMode::Force
+        } else if self.reuse {
+            git::BranchMode::Reuse
+        } else {
+            git::BranchMode::Default
+        }
+    }
 }
 
 /// Add a worktree for a branch to an existing baum
@@ -63,10 +77,21 @@ pub fn branch(ws: &Workspace, opts: BranchOptions, out: &Output) -> Result<()> {
         &format!("{} -> {}", opts.branch, worktree_name),
     );
 
-    git::add_worktree(&bare_path, &worktree_path, &opts.branch)?;
+    // Ensure the baum has an ID (generate if legacy baum)
+    let existing_ids = collect_baum_ids(&ws.root);
+    let baum_id = baum_manifest.ensure_id(&existing_ids).to_string();
 
-    // Update baum manifest
-    baum_manifest.add_worktree(&opts.branch, &worktree_name);
+    // Add worktree with tracking branch (wald/<baum_id>/<branch>)
+    let local_branch = git::add_worktree_with_tracking_mode(
+        &bare_path,
+        &worktree_path,
+        &opts.branch,
+        &baum_id,
+        opts.branch_mode(),
+    )?;
+
+    // Update baum manifest with local branch info
+    baum_manifest.add_worktree_with_local(&opts.branch, &worktree_name, &local_branch);
     save_baum(&container, &baum_manifest)?;
 
     // Add to .gitignore

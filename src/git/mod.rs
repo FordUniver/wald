@@ -9,4 +9,8 @@ pub use bare::{
 };
 pub use history::detect_moves;
 pub use shell::worktree_move;
-pub use worktree::{add_worktree, list_worktrees, remove_worktree};
+pub use worktree::{
+    add_worktree, add_worktree_with_tracking, add_worktree_with_tracking_mode, check_branch_exists,
+    delete_branch, has_unpushed_commits, list_wald_branches, list_worktrees, remove_worktree,
+    BranchMode,
+};
