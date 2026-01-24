@@ -8,20 +8,12 @@ use git2::{BranchType, Repository};
 use crate::types::RepoId;
 
 /// Options for cloning a bare repo
+#[derive(Default)]
 pub struct CloneOptions {
     /// Shallow clone depth (None = full history)
     pub depth: Option<u32>,
     /// Partial clone filter (None = full clone)
     pub filter: Option<String>,
-}
-
-impl Default for CloneOptions {
-    fn default() -> Self {
-        Self {
-            depth: None,
-            filter: None,
-        }
-    }
 }
 
 /// Clone a repository as a bare repo

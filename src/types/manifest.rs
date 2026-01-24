@@ -19,20 +19,15 @@ pub enum LfsPolicy {
 }
 
 /// Clone depth policy
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DepthPolicy {
     /// Full clone (all history)
     #[serde(rename = "full")]
+    #[default]
     Full,
     /// Shallow clone with N commits
     Depth(u32),
-}
-
-impl Default for DepthPolicy {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 /// Partial clone filter policy
