@@ -21,7 +21,7 @@ stages:
 
 variables:
   GIT_DEPTH: 1
-  RUST_VERSION: "1.83"
+  RUST_VERSION: "1.93"
   YQ_VERSION: "4.44.3"
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
 
