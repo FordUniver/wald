@@ -110,7 +110,7 @@ lint:clippy:
 test:integration:
   stage: test
   needs: [build]
-  image: debian:bookworm-slim
+  image: debian:trixie-slim
   before_script:
     - apt-get update
     - apt-get install -y git git-lfs jq wget ca-certificates
