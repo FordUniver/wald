@@ -1,139 +1,124 @@
-# GitLab CI/CD pipeline for wald
+# GitLab CI/CD pipeline for this Rust CLI tool.
 #
-# Pipeline structure:
-#
-#   build ──→ test:integration
-#     │              │
-#     │    test:unit─┤
-#     │         │    │
-#     │    lint:fmt──┤
-#     │         │    │
-#     │    lint:clippy
-#     │
-#     Releases are built locally via `release` script (cross-compilation).
-#
-# Future: stress testing, benchmarking (see thread 27afdb)
+# CI runs build + tests + linting. Releases are built locally via the unified
+# `infrastructure/tools/release` script.
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: always
 
 stages:
   - build
   - test
-  
 
 variables:
   GIT_DEPTH: 1
+  GIT_FETCH_EXTRA_FLAGS: --tags --prune --prune-tags
   RUST_VERSION: "1.93"
-  YQ_VERSION: "4.44.3"
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  YQ_VERSION: "4.44.3"
+  CLAUDE_CODE_SHELL_PREFIX: ""
 
-# ====================================================================================
-# Build Stage
-# ====================================================================================
+.rules_common: &rules_common
+  - if: $CI_PIPELINE_SOURCE == "push"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_PIPELINE_SOURCE == "web"
 
-# Build release binary for testing and dev releases
+.cache_common: &cache_common
+  paths:
+    - .cargo/registry
+    - .cargo/git
+    - target
+
+.default_rust_job: &default_rust_job
+  image: rust:${RUST_VERSION}-slim
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq bash git ca-certificates curl jq build-essential pkg-config libssl-dev cmake
+    - |
+      if [ -x ./prebuild.sh ]; then
+        curl -sL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
+        chmod +x /usr/local/bin/yq
+        ./prebuild.sh
+      fi
+
 build:
   stage: build
-  image: rust:${RUST_VERSION}-alpine
+  <<: *default_rust_job
   script:
-    - apk add --no-cache musl-dev pkgconf openssl-dev openssl-libs-static cmake make
-    - rustup target add x86_64-unknown-linux-musl
-    - export OPENSSL_STATIC=1
-    - cargo build --release --target x86_64-unknown-linux-musl
-    - ./target/x86_64-unknown-linux-musl/release/wald --version
+    - cargo build --locked --release
+    - ./target/release/${CI_PROJECT_NAME} --version
   artifacts:
     paths:
-      - target/x86_64-unknown-linux-musl/release/wald
+      - target/release/${CI_PROJECT_NAME}
     expire_in: 1 day
   cache:
     key: cargo-build-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-      when: never  # Tag builds handled by build:linux-* jobs
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    <<: *cache_common
+  rules: *rules_common
 
-# ====================================================================================
-# Test Stage
-# ====================================================================================
-
-# Unit tests (runs in parallel with build)
 test:unit:
   stage: test
-  image: rust:${RUST_VERSION}
+  <<: *default_rust_job
   script:
-    - cargo test --lib -- --nocapture
+    - cargo test --locked -- --nocapture
   cache:
-    key: cargo-test-unit-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    key: cargo-test-${CI_COMMIT_REF_SLUG}
+    <<: *cache_common
+  rules: *rules_common
 
-# Formatting check (runs in parallel with unit tests)
 lint:fmt:
   stage: test
-  image: rust:${RUST_VERSION}
+  <<: *default_rust_job
   script:
     - rustup component add rustfmt
     - cargo fmt --check
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  rules: *rules_common
 
-# Clippy lint check (runs in parallel with unit tests)
 lint:clippy:
   stage: test
-  image: rust:${RUST_VERSION}
+  <<: *default_rust_job
   script:
     - rustup component add clippy
-    - cargo clippy --all-targets -- -D warnings
+    - cargo clippy --locked --all-targets -- -D warnings
   cache:
     key: cargo-clippy-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    <<: *cache_common
+  rules: *rules_common
 
-# Integration tests (uses build artifact)
 test:integration:
   stage: test
   needs: [build]
   image: debian:bookworm-slim
   before_script:
-    - apt-get update
-    - apt-get install -y git git-lfs jq wget ca-certificates
-    - wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64
-    - echo "a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7  /usr/local/bin/yq" | sha256sum -c -
+    - apt-get update -qq
+    - apt-get install -y -qq bash git git-lfs jq curl ca-certificates gawk
+    - curl -sL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
     - chmod +x /usr/local/bin/yq
-    - git config --global user.name "CI Test"
-    - git config --global user.email "ci@wald.test"
+    - git config --global user.name "CI"
+    - git config --global user.email "ci@example.invalid"
     - git config --global pull.rebase true
     - git config --global rebase.autoStash true
   script:
-    - ./target/x86_64-unknown-linux-musl/release/wald --version
-    - cd test && DEBUG=1 bash run_tests.sh ../target/x86_64-unknown-linux-musl/release/wald
+    - ./target/release/${CI_PROJECT_NAME} --version
+    - |
+      if [ -x ./test.sh ]; then
+        ./test.sh -v
+      elif [ -x ./test/run_tests.sh ]; then
+        DEBUG=1 ./test/run_tests.sh ./target/release/${CI_PROJECT_NAME}
+      elif [ -x ./tests/runner.sh ]; then
+        ./tests/runner.sh -v ./target/release/${CI_PROJECT_NAME}
+      else
+        echo "No integration test runner found (expected: ./test.sh, ./test/run_tests.sh, or ./tests/runner.sh)"
+      fi
   artifacts:
     when: on_failure
     paths:
       - test/results/
+      - tests/
+      - tests/*.log
     expire_in: 1 week
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  rules: *rules_common
+
