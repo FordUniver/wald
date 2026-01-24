@@ -1,10 +1,11 @@
 [package]
 name = "wald"
-version = "0.0.0"
-edition = "2021"
+version = "0.0.0"  # Actual version from git describe via build.rs
+edition = "2024"
 description = "Git workspace manager: bare repos, worktrees, and cross-machine sync"
-authors = ["Christoph Spiegel"]
 license = "GPL-3.0-or-later"
+repository = "https://git.zib.de/tools/wald"
+authors = ["Christoph Spiegel"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -26,5 +27,8 @@ tempfile = "3"
 tools-release = true
 
 [profile.release]
+opt-level = "z"
 lto = true
+codegen-units = 1
+panic = "abort"
 strip = true
