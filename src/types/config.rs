@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::{DepthPolicy, LfsPolicy};
+use super::{DepthPolicy, FilterPolicy, LfsPolicy};
 
 /// Workspace configuration (.wald/config.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,13 +16,18 @@ pub struct Config {
     /// Default clone depth for new repos
     #[serde(default)]
     pub default_depth: DepthPolicy,
+
+    /// Default partial clone filter for new repos
+    #[serde(default)]
+    pub default_filter: FilterPolicy,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             default_lfs: LfsPolicy::Minimal,
-            default_depth: DepthPolicy::Depth(100),
+            default_depth: DepthPolicy::Full,
+            default_filter: FilterPolicy::BlobNone, // Fast clones, blobs fetched on demand
         }
     }
 }
@@ -54,7 +59,8 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.default_lfs, LfsPolicy::Minimal);
-        assert_eq!(config.default_depth, DepthPolicy::Depth(100));
+        assert_eq!(config.default_depth, DepthPolicy::Full);
+        assert_eq!(config.default_filter, FilterPolicy::BlobNone);
     }
 
     #[test]
@@ -62,6 +68,7 @@ mod tests {
         let config = Config {
             default_lfs: LfsPolicy::Full,
             default_depth: DepthPolicy::Depth(50),
+            default_filter: FilterPolicy::BlobNone,
         };
 
         let yaml = serde_yml::to_string(&config).unwrap();
@@ -69,5 +76,6 @@ mod tests {
 
         assert_eq!(parsed.default_lfs, LfsPolicy::Full);
         assert_eq!(parsed.default_depth, DepthPolicy::Depth(50));
+        assert_eq!(parsed.default_filter, FilterPolicy::BlobNone);
     }
 }

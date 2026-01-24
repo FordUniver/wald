@@ -31,7 +31,33 @@ pub enum DepthPolicy {
 
 impl Default for DepthPolicy {
     fn default() -> Self {
-        Self::Depth(100)
+        Self::Full
+    }
+}
+
+/// Partial clone filter policy
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FilterPolicy {
+    /// Full clone (no filter)
+    #[default]
+    None,
+    /// Blobless clone: fetches commits and trees, blobs on demand
+    /// Fast initial clone, good for worktree workflows
+    BlobNone,
+    /// Treeless clone: fetches only commits, trees and blobs on demand
+    /// Even faster but more network requests when navigating history
+    TreeZero,
+}
+
+impl FilterPolicy {
+    /// Return the git --filter argument value, or None for full clone
+    pub fn as_git_arg(&self) -> Option<&'static str> {
+        match self {
+            FilterPolicy::None => None,
+            FilterPolicy::BlobNone => Some("blob:none"),
+            FilterPolicy::TreeZero => Some("tree:0"),
+        }
     }
 }
 
@@ -45,6 +71,10 @@ pub struct RepoEntry {
     /// Clone depth
     #[serde(default)]
     pub depth: DepthPolicy,
+
+    /// Partial clone filter
+    #[serde(default)]
+    pub filter: FilterPolicy,
 
     /// Upstream repo ID for fork tracking
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -162,6 +192,7 @@ mod tests {
             RepoEntry {
                 lfs: LfsPolicy::Full,
                 depth: DepthPolicy::Depth(50),
+                filter: FilterPolicy::BlobNone,
                 upstream: None,
                 aliases: vec!["repo".to_string()],
             },

@@ -117,17 +117,34 @@ begin_test "wald init works with explicit path"
     rm -rf "$_test_dir"
 end_test
 
-begin_test "wald init warns if not a git repo"
+begin_test "wald init auto-runs git init if not a git repo"
     _test_dir=$(mktemp -d /tmp/wald-init-test.XXXXXX)
     cd "$_test_dir"
 
-    # Init without git repo
+    # Init without existing git repo - should auto-run git init
     _result=$($WALD_BIN init 2>&1)
-    assert_contains "$_result" "not a git repository"
+    assert_contains "$_result" "Initializing git repository"
 
-    # But should still create workspace
+    # Should create both git repo and wald workspace
+    assert_dir_exists ".git"
     assert_dir_exists ".wald"
     assert_file_exists ".wald/manifest.yaml"
+
+    # Cleanup
+    cd /tmp
+    rm -rf "$_test_dir"
+end_test
+
+begin_test "wald init --no-git fails if not a git repo"
+    _test_dir=$(mktemp -d /tmp/wald-init-test.XXXXXX)
+    cd "$_test_dir"
+
+    # Init with --no-git should fail
+    _result=$($WALD_BIN init --no-git 2>&1 || true)
+    assert_contains "$_result" "not a git repository"
+
+    # Should not create workspace
+    assert_dir_not_exists ".wald"
 
     # Cleanup
     cd /tmp

@@ -16,7 +16,7 @@ pub use init::init;
 pub use move_cmd::move_baum;
 pub use plant::plant;
 pub use prune::prune;
-pub use repo::{repo_add, repo_fetch, repo_list, repo_remove};
+pub use repo::{repo_add, repo_fetch, repo_gc, repo_list, repo_remove};
 pub use status::status;
 pub use sync::sync;
 pub use uproot::uproot;

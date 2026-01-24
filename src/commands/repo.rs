@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 
 use crate::git;
 use crate::output::{Output, OutputFormat};
-use crate::types::{DepthPolicy, LfsPolicy, RepoEntry, RepoId};
+use crate::types::{DepthPolicy, FilterPolicy, LfsPolicy, RepoEntry, RepoId};
 use crate::workspace::Workspace;
 
 /// Options for repo add command
@@ -12,6 +12,7 @@ pub struct RepoAddOptions {
     pub repo_id: String,
     pub lfs: Option<LfsPolicy>,
     pub depth: Option<DepthPolicy>,
+    pub filter: Option<FilterPolicy>,
     pub upstream: Option<String>,
     pub aliases: Vec<String>,
     pub clone: bool,
@@ -47,14 +48,20 @@ pub fn repo_add(ws: &mut Workspace, opts: RepoAddOptions, out: &Output) -> Resul
         depth: opts
             .depth
             .unwrap_or_else(|| ws.config.default_depth.clone()),
+        filter: opts
+            .filter
+            .unwrap_or_else(|| ws.config.default_filter.clone()),
         upstream: opts.upstream,
         aliases: opts.aliases,
     };
 
-    // Get depth for cloning
-    let clone_depth = match &entry.depth {
-        DepthPolicy::Full => None,
-        DepthPolicy::Depth(d) => Some(*d),
+    // Build clone options
+    let clone_opts = git::CloneOptions {
+        depth: match &entry.depth {
+            DepthPolicy::Full => None,
+            DepthPolicy::Depth(d) => Some(*d),
+        },
+        filter: entry.filter.as_git_arg().map(|s| s.to_string()),
     };
 
     // Clone bare repo if requested
@@ -62,7 +69,7 @@ pub fn repo_add(ws: &mut Workspace, opts: RepoAddOptions, out: &Output) -> Resul
         let bare_path = ws.repos_dir().join(id.to_bare_path());
         if !bare_path.exists() {
             out.status("Cloning", &repo_id);
-            git::clone_bare(&id, &bare_path, clone_depth)?;
+            git::clone_bare(&id, &bare_path, clone_opts)?;
         }
     }
 
@@ -157,11 +164,18 @@ pub fn repo_remove(ws: &mut Workspace, repo_ref: &str, out: &Output) -> Result<(
     Ok(())
 }
 
+/// Options for repo fetch command
+pub struct RepoFetchOptions {
+    pub repo_ref: Option<String>,
+    /// Convert partial clones to full and fetch all objects
+    pub full: bool,
+}
+
 /// Fetch updates for repositories
-pub fn repo_fetch(ws: &Workspace, repo_ref: Option<&str>, out: &Output) -> Result<()> {
+pub fn repo_fetch(ws: &mut Workspace, opts: RepoFetchOptions, out: &Output) -> Result<()> {
     out.require_human("repo fetch")?;
 
-    let repos: Vec<(String, PathBuf)> = if let Some(r) = repo_ref {
+    let repos: Vec<(String, PathBuf)> = if let Some(ref r) = opts.repo_ref {
         // Fetch specific repo
         let repo_id = ws
             .resolve_repo(r)
@@ -193,12 +207,86 @@ pub fn repo_fetch(ws: &Workspace, repo_ref: Option<&str>, out: &Output) -> Resul
         return Ok(());
     }
 
+    let mut updated_manifest = false;
+
     for (repo_id, bare_path) in repos {
-        out.status("Fetching", &repo_id);
-        git::fetch_bare(&bare_path)?;
+        if opts.full {
+            let is_partial = git::is_partial_clone(&bare_path)?;
+            if is_partial {
+                out.status("Converting to full clone", &repo_id);
+                git::fetch_full(&bare_path)?;
+                // Update manifest to reflect full clone
+                if let Some(entry) = ws.manifest.repos.get_mut(&repo_id) {
+                    entry.filter = FilterPolicy::None;
+                    updated_manifest = true;
+                }
+            } else {
+                out.status("Fetching", &format!("{} (already full)", repo_id));
+                git::fetch_bare(&bare_path)?;
+            }
+        } else {
+            out.status("Fetching", &repo_id);
+            git::fetch_bare(&bare_path)?;
+        }
+    }
+
+    if updated_manifest {
+        ws.save_manifest()?;
     }
 
     out.success("Fetch complete");
+
+    Ok(())
+}
+
+/// Options for repo gc command
+pub struct RepoGcOptions {
+    pub repo_ref: Option<String>,
+    pub aggressive: bool,
+}
+
+/// Run garbage collection on repositories
+pub fn repo_gc(ws: &Workspace, opts: RepoGcOptions, out: &Output) -> Result<()> {
+    out.require_human("repo gc")?;
+
+    let repos: Vec<(String, PathBuf)> = if let Some(ref r) = opts.repo_ref {
+        // GC specific repo
+        let repo_id = ws
+            .resolve_repo(r)
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow::anyhow!("repository not found: {}", r))?;
+        let bare_path = ws.bare_repo_path(&repo_id)?;
+        if !bare_path.exists() {
+            bail!("bare repo not found: {}", bare_path.display());
+        }
+        vec![(repo_id, bare_path)]
+    } else {
+        // GC all cloned repos
+        ws.manifest
+            .repos
+            .keys()
+            .filter_map(|id| {
+                let path = ws.bare_repo_path(id).ok()?;
+                if path.exists() {
+                    Some((id.clone(), path))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+
+    if repos.is_empty() {
+        out.info("No repositories to clean");
+        return Ok(());
+    }
+
+    for (repo_id, bare_path) in repos {
+        out.status("Cleaning", &repo_id);
+        git::gc(&bare_path, opts.aggressive)?;
+    }
+
+    out.success("Garbage collection complete");
 
     Ok(())
 }

@@ -6,7 +6,7 @@ use clap_complete::Shell;
 
 use wald::commands;
 use wald::output::{print_error, Output, OutputFormat};
-use wald::types::{DepthPolicy, LfsPolicy};
+use wald::types::{DepthPolicy, FilterPolicy, LfsPolicy};
 use wald::workspace::Workspace;
 
 #[derive(Parser)]
@@ -37,6 +37,10 @@ enum Commands {
         /// Recreate .wald/ directory if it exists
         #[arg(long)]
         force: bool,
+
+        /// Don't run git init (error if not already a git repo)
+        #[arg(long)]
+        no_git: bool,
     },
 
     /// Manage repository registry
@@ -156,6 +160,10 @@ enum RepoAction {
         #[arg(long, value_parser = parse_depth)]
         depth: Option<DepthPolicy>,
 
+        /// Partial clone filter (blob-none for fast clone, blobs fetched on demand)
+        #[arg(long, value_parser = parse_filter)]
+        filter: Option<FilterPolicy>,
+
         /// Upstream repository for fork tracking
         #[arg(long)]
         upstream: Option<String>,
@@ -182,6 +190,20 @@ enum RepoAction {
     Fetch {
         /// Repository ID or alias (all if not specified)
         repo: Option<String>,
+
+        /// Convert partial clones to full and fetch all objects
+        #[arg(long)]
+        full: bool,
+    },
+
+    /// Run garbage collection on repositories
+    Gc {
+        /// Repository ID or alias (all if not specified)
+        repo: Option<String>,
+
+        /// Aggressive garbage collection (slower but more thorough)
+        #[arg(long)]
+        aggressive: bool,
     },
 }
 
@@ -204,6 +226,18 @@ fn parse_depth(s: &str) -> Result<DepthPolicy, String> {
         s.parse::<u32>()
             .map(DepthPolicy::Depth)
             .map_err(|_| format!("Invalid depth: {}. Use a number or 'full'", s))
+    }
+}
+
+fn parse_filter(s: &str) -> Result<FilterPolicy, String> {
+    match s.to_lowercase().replace(':', "-").as_str() {
+        "none" => Ok(FilterPolicy::None),
+        "blob-none" => Ok(FilterPolicy::BlobNone),
+        "tree-0" | "tree-zero" => Ok(FilterPolicy::TreeZero),
+        _ => Err(format!(
+            "Invalid filter: {}. Use none, blob-none, or tree-0",
+            s
+        )),
     }
 }
 
@@ -233,10 +267,11 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             generate_completions(*shell);
             return Ok(());
         }
-        Commands::Init { path, force } => {
+        Commands::Init { path, force, no_git } => {
             let opts = commands::init::InitOptions {
                 path: path.clone(),
                 force: *force,
+                no_git: *no_git,
             };
             return commands::init(opts, out);
         }
@@ -252,6 +287,7 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
                 repo_id,
                 lfs,
                 depth,
+                filter,
                 upstream,
                 aliases,
                 no_clone,
@@ -260,6 +296,7 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
                     repo_id,
                     lfs,
                     depth,
+                    filter,
                     upstream,
                     aliases,
                     clone: !no_clone, // Clone by default, --no-clone skips
@@ -268,7 +305,20 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             }
             RepoAction::List => commands::repo_list(&ws, out),
             RepoAction::Remove { repo } => commands::repo_remove(&mut ws, &repo, out),
-            RepoAction::Fetch { repo } => commands::repo_fetch(&ws, repo.as_deref(), out),
+            RepoAction::Fetch { repo, full } => {
+                let opts = commands::repo::RepoFetchOptions {
+                    repo_ref: repo,
+                    full,
+                };
+                commands::repo_fetch(&mut ws, opts, out)
+            }
+            RepoAction::Gc { repo, aggressive } => {
+                let opts = commands::repo::RepoGcOptions {
+                    repo_ref: repo,
+                    aggressive,
+                };
+                commands::repo_gc(&ws, opts, out)
+            }
         },
 
         Commands::Plant {

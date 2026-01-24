@@ -7,8 +7,25 @@ use git2::{BranchType, Repository};
 
 use crate::types::RepoId;
 
+/// Options for cloning a bare repo
+pub struct CloneOptions {
+    /// Shallow clone depth (None = full history)
+    pub depth: Option<u32>,
+    /// Partial clone filter (None = full clone)
+    pub filter: Option<String>,
+}
+
+impl Default for CloneOptions {
+    fn default() -> Self {
+        Self {
+            depth: None,
+            filter: None,
+        }
+    }
+}
+
 /// Clone a repository as a bare repo
-pub fn clone_bare(repo_id: &RepoId, target: &Path, depth: Option<u32>) -> Result<()> {
+pub fn clone_bare(repo_id: &RepoId, target: &Path, opts: CloneOptions) -> Result<()> {
     // Ensure parent directory exists
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
@@ -22,12 +39,16 @@ pub fn clone_bare(repo_id: &RepoId, target: &Path, depth: Option<u32>) -> Result
 
     let url = repo_id.to_clone_url();
 
-    // Use git command for clone (libgit2 has limited shallow clone support)
+    // Use git command for clone (libgit2 has limited shallow/partial clone support)
     let mut cmd = Command::new("git");
     cmd.arg("clone").arg("--bare").arg("--quiet");
 
-    if let Some(d) = depth {
+    if let Some(d) = opts.depth {
         cmd.arg(format!("--depth={}", d));
+    }
+
+    if let Some(ref f) = opts.filter {
+        cmd.arg(format!("--filter={}", f));
     }
 
     cmd.arg(&url).arg(target);
@@ -65,6 +86,86 @@ pub fn fetch_bare(path: &Path) -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("git fetch failed in {}: {}", path.display(), stderr);
+    }
+
+    Ok(())
+}
+
+/// Check if a bare repository is a partial clone
+pub fn is_partial_clone(path: &Path) -> Result<bool> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .arg("config")
+        .arg("--get")
+        .arg("remote.origin.promisor")
+        .output()
+        .with_context(|| format!("failed to check partial clone status: {}", path.display()))?;
+
+    // If config exists and is "true", it's a partial clone
+    if output.status.success() {
+        let value = String::from_utf8_lossy(&output.stdout);
+        return Ok(value.trim() == "true");
+    }
+
+    Ok(false)
+}
+
+/// Convert a partial clone to a full clone and fetch all objects
+pub fn fetch_full(path: &Path) -> Result<()> {
+    // Remove partial clone configuration
+    // These may fail if not set, which is fine
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .arg("config")
+        .arg("--unset")
+        .arg("remote.origin.promisor")
+        .output();
+
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .arg("config")
+        .arg("--unset")
+        .arg("remote.origin.partialclonefilter")
+        .output();
+
+    // Fetch all objects (--refetch ensures we get everything)
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .arg("fetch")
+        .arg("--all")
+        .arg("--prune")
+        .arg("--refetch")
+        .output()
+        .with_context(|| format!("failed to fetch full in {}", path.display()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git fetch --refetch failed in {}: {}", path.display(), stderr);
+    }
+
+    Ok(())
+}
+
+/// Run garbage collection on a bare repository
+pub fn gc(path: &Path, aggressive: bool) -> Result<()> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(path).arg("gc");
+
+    if aggressive {
+        cmd.arg("--aggressive");
+    }
+
+    let output = cmd
+        .output()
+        .with_context(|| format!("failed to run git gc in {}", path.display()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git gc failed in {}: {}", path.display(), stderr);
     }
 
     Ok(())
@@ -156,7 +257,11 @@ mod tests {
         let target = dir.path().join("test.git");
 
         let repo_id = RepoId::parse("github.com/octocat/Hello-World").unwrap();
-        clone_bare(&repo_id, &target, Some(1)).unwrap();
+        let opts = CloneOptions {
+            depth: Some(1),
+            filter: None,
+        };
+        clone_bare(&repo_id, &target, opts).unwrap();
 
         assert!(target.exists());
         assert!(target.join("HEAD").exists());

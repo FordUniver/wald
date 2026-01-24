@@ -35,6 +35,12 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
         );
     }
 
+    // Warn if partial clone (will need network to fetch blobs)
+    if git::is_partial_clone(&bare_path)? {
+        out.warn("Repository is a partial clone. Network access required to fetch file contents.");
+        out.info("Use `wald repo fetch --full` to convert to a full clone for offline access.");
+    }
+
     // Ensure workspace-level .gitignore has wald section
     ensure_gitignore_section(&ws.root)?;
 
