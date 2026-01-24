@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::output::Output;
 use crate::workspace::Workspace;

@@ -1,13 +1,13 @@
 use std::fs;
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::git::history::detect_moves;
 use crate::git::shell::get_head_commit;
 use crate::output::Output;
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{Workspace, is_baum};
 
 /// Options for sync command
 pub struct SyncOptions {

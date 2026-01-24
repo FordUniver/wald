@@ -3,11 +3,11 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use walkdir::WalkDir;
 
 use crate::types::{BaumManifest, Config, Manifest, SyncState};
-use crate::workspace::baum::{is_baum, load_baum, BAUM_DIR};
+use crate::workspace::baum::{BAUM_DIR, is_baum, load_baum};
 use crate::workspace::gitignore::ensure_gitignore_section;
 
 /// The wald directory name
@@ -253,10 +253,11 @@ pub fn find_all_baums(workspace_root: &Path) -> Vec<(PathBuf, BaumManifest)> {
             Err(_) => continue,
         };
 
-        if entry.file_type().is_dir() && is_baum(entry.path()) {
-            if let Ok(manifest) = load_baum(entry.path()) {
-                baums.push((entry.path().to_path_buf(), manifest));
-            }
+        if entry.file_type().is_dir()
+            && is_baum(entry.path())
+            && let Ok(manifest) = load_baum(entry.path())
+        {
+            baums.push((entry.path().to_path_buf(), manifest));
         }
     }
 

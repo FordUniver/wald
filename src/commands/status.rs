@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 use crate::output::{Output, OutputFormat};
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{Workspace, is_baum};
 
 /// Show workspace status
 pub fn status(ws: &Workspace, out: &Output) -> Result<()> {

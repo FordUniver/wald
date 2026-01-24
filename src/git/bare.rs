@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use git2::{BranchType, Repository};
 
 use crate::types::RepoId;
@@ -184,10 +184,10 @@ pub fn list_branches(path: &Path) -> Result<Vec<String>> {
         let (branch, _) = branch_result?;
         if let Some(name) = branch.name()? {
             // Strip "origin/" prefix
-            if let Some(stripped) = name.strip_prefix("origin/") {
-                if !branches.contains(&stripped.to_string()) {
-                    branches.push(stripped.to_string());
-                }
+            if let Some(stripped) = name.strip_prefix("origin/")
+                && !branches.contains(&stripped.to_string())
+            {
+                branches.push(stripped.to_string());
             }
         }
     }
@@ -218,12 +218,12 @@ pub fn get_default_branch(path: &Path) -> Result<String> {
     let repo = open_bare(path)?;
 
     // Try to find HEAD reference
-    if let Ok(head) = repo.find_reference("HEAD") {
-        if let Some(target) = head.symbolic_target() {
-            // refs/heads/main -> main
-            if let Some(branch) = target.strip_prefix("refs/heads/") {
-                return Ok(branch.to_string());
-            }
+    if let Ok(head) = repo.find_reference("HEAD")
+        && let Some(target) = head.symbolic_target()
+    {
+        // refs/heads/main -> main
+        if let Some(branch) = target.strip_prefix("refs/heads/") {
+            return Ok(branch.to_string());
         }
     }
 

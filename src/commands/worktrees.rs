@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 use crate::output::{Output, OutputFormat};
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, validate_workspace_path, Workspace};
+use crate::workspace::{Workspace, is_baum, validate_workspace_path};
 
 /// Options for worktrees command
 pub struct WorktreesOptions {

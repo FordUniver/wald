@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 
 use wald::commands;
-use wald::output::{print_error, Output, OutputFormat};
+use wald::output::{Output, OutputFormat, print_error};
 use wald::types::{DepthPolicy, FilterPolicy, LfsPolicy};
 use wald::workspace::Workspace;
 

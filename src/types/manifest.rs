@@ -189,10 +189,10 @@ impl Manifest {
             // Repo name only: dotfiles → github.com/user/dotfiles
             for repo_id in self.repos.keys() {
                 let id_parts: Vec<&str> = repo_id.split('/').collect();
-                if let Some(last) = id_parts.last() {
-                    if *last == reference {
-                        matches.push(repo_id.as_str());
-                    }
+                if let Some(last) = id_parts.last()
+                    && *last == reference
+                {
+                    matches.push(repo_id.as_str());
                 }
             }
         }

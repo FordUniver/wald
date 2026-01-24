@@ -29,12 +29,12 @@ impl SyncState {
     /// Save state to a YAML file
     pub fn save(&self, path: &Path) -> Result<()> {
         // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!("failed to create state directory: {}", parent.display())
-                })?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create state directory: {}", parent.display())
+            })?;
         }
 
         let content = serde_yml::to_string(self).context("failed to serialize state")?;

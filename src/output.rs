@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// Output format
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

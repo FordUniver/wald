@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::git;
 use crate::output::Output;
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, validate_workspace_path, Workspace};
+use crate::workspace::{Workspace, is_baum, validate_workspace_path};
 
 /// Options for uproot command
 pub struct UprootOptions {

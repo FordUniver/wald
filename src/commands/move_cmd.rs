@@ -2,13 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::git::worktree_move;
 use crate::output::Output;
 use crate::types::WorktreeEntry;
 use crate::workspace::baum::{load_baum, save_baum};
-use crate::workspace::{is_baum, validate_workspace_path, Workspace};
+use crate::workspace::{Workspace, is_baum, validate_workspace_path};
 
 /// Options for move command
 pub struct MoveOptions {

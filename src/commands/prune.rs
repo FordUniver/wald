@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::git;
 use crate::id::parse_wald_branch;
 use crate::output::Output;
 use crate::workspace::baum::{load_baum, save_baum};
-use crate::workspace::{find_all_baums, is_baum, validate_workspace_path, Workspace};
+use crate::workspace::{Workspace, find_all_baums, is_baum, validate_workspace_path};
 
 /// Options for prune command
 pub struct PruneOptions {

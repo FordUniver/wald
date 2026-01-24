@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::git;
 use crate::naming::worktree_dir_name;
@@ -9,7 +9,7 @@ use crate::types::ResolveResult;
 use crate::workspace::baum::{load_baum, save_baum};
 use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
 use crate::workspace::{
-    collect_baum_ids, create_baum, is_baum, validate_workspace_path, Workspace,
+    Workspace, collect_baum_ids, create_baum, is_baum, validate_workspace_path,
 };
 
 /// Options for plant command

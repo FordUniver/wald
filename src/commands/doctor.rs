@@ -6,7 +6,7 @@ use walkdir::WalkDir;
 use crate::git;
 use crate::output::Output;
 use crate::workspace::baum::load_baum;
-use crate::workspace::{is_baum, Workspace};
+use crate::workspace::{Workspace, is_baum};
 
 /// Options for doctor command
 pub struct DoctorOptions {
@@ -45,14 +45,14 @@ pub fn doctor(ws: &Workspace, opts: DoctorOptions, out: &Output) -> Result<()> {
 
     // Check each registered repo
     for repo_id in ws.manifest.repos.keys() {
-        if let Ok(bare_path) = ws.bare_repo_path(repo_id) {
-            if !bare_path.exists() {
-                issues.push(Issue {
-                    severity: Severity::Warning,
-                    message: format!("Bare repo not cloned: {}", repo_id),
-                    fix: None,
-                });
-            }
+        if let Ok(bare_path) = ws.bare_repo_path(repo_id)
+            && !bare_path.exists()
+        {
+            issues.push(Issue {
+                severity: Severity::Warning,
+                message: format!("Bare repo not cloned: {}", repo_id),
+                fix: None,
+            });
         }
     }
 
@@ -122,12 +122,12 @@ pub fn doctor(ws: &Workspace, opts: DoctorOptions, out: &Output) -> Result<()> {
             };
             println!("  [{}] {}", prefix, issue.message);
 
-            if opts.fix {
-                if let Some(fix) = &issue.fix {
-                    match apply_fix(fix) {
-                        Ok(_) => println!("         Fixed!"),
-                        Err(e) => println!("         Failed to fix: {}", e),
-                    }
+            if opts.fix
+                && let Some(fix) = &issue.fix
+            {
+                match apply_fix(fix) {
+                    Ok(_) => println!("         Fixed!"),
+                    Err(e) => println!("         Failed to fix: {}", e),
                 }
             }
         }

@@ -6,7 +6,7 @@
 use std::env;
 use std::path::{Component, Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 /// Validate and resolve a user-provided path relative to a workspace root.
 ///
