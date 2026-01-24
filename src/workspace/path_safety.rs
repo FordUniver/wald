@@ -171,10 +171,7 @@ mod tests {
         env::set_current_dir(original_dir).unwrap();
 
         assert!(result.is_ok(), "expected ok, got {:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            root.join("infrastructure/tools/dotfiles")
-        );
+        assert_eq!(result.unwrap(), root.join("infrastructure/tools/dotfiles"));
     }
 
     #[test]
@@ -195,10 +192,7 @@ mod tests {
         env::set_current_dir(original_dir).unwrap();
 
         assert!(result.is_ok(), "expected ok, got {:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            root.join("infrastructure/dotfiles")
-        );
+        assert_eq!(result.unwrap(), root.join("infrastructure/dotfiles"));
     }
 
     #[test]

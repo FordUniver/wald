@@ -212,7 +212,13 @@ pub fn add_worktree_with_tracking(
     branch: &str,
     baum_id: &str,
 ) -> Result<String> {
-    add_worktree_with_tracking_mode(bare_repo, worktree_path, branch, baum_id, BranchMode::Default)
+    add_worktree_with_tracking_mode(
+        bare_repo,
+        worktree_path,
+        branch,
+        baum_id,
+        BranchMode::Default,
+    )
 }
 
 /// Add a worktree with a local tracking branch, with configurable branch mode
@@ -298,7 +304,11 @@ pub fn add_worktree_with_tracking_mode(
                 );
             }
         } else {
-            bail!("failed to create branch {}: {}", local_branch, stderr.trim());
+            bail!(
+                "failed to create branch {}: {}",
+                local_branch,
+                stderr.trim()
+            );
         }
     }
 

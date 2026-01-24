@@ -37,7 +37,10 @@ pub fn init(opts: InitOptions, out: &Output) -> Result<()> {
         }
 
         // Run git init
-        out.info(&format!("Initializing git repository at {}", target.display()));
+        out.info(&format!(
+            "Initializing git repository at {}",
+            target.display()
+        ));
         let status = Command::new("git")
             .args(["init"])
             .current_dir(&target)

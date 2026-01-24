@@ -8,7 +8,9 @@ use crate::output::Output;
 use crate::types::ResolveResult;
 use crate::workspace::baum::{load_baum, save_baum};
 use crate::workspace::gitignore::{add_worktree_to_gitignore, ensure_gitignore_section};
-use crate::workspace::{collect_baum_ids, create_baum, is_baum, validate_workspace_path, Workspace};
+use crate::workspace::{
+    collect_baum_ids, create_baum, is_baum, validate_workspace_path, Workspace,
+};
 
 /// Options for plant command
 pub struct PlantOptions {
@@ -139,7 +141,11 @@ pub fn plant(ws: &mut Workspace, opts: PlantOptions, out: &Output) -> Result<()>
     // Check for duplicate branches if adding to existing baum
     if !is_new_baum {
         for branch in &branches {
-            if baum_manifest.worktrees.iter().any(|wt| &wt.branch == branch) {
+            if baum_manifest
+                .worktrees
+                .iter()
+                .any(|wt| &wt.branch == branch)
+            {
                 bail!(
                     "worktree for branch '{}' already exists in baum at {}",
                     branch,

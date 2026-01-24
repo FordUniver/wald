@@ -288,7 +288,11 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             generate_completions(*shell);
             return Ok(());
         }
-        Commands::Init { path, force, no_git } => {
+        Commands::Init {
+            path,
+            force,
+            no_git,
+        } => {
             let opts = commands::init::InitOptions {
                 path: path.clone(),
                 force: *force,

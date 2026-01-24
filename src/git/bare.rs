@@ -144,7 +144,11 @@ pub fn fetch_full(path: &Path) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("git fetch --refetch failed in {}: {}", path.display(), stderr);
+        bail!(
+            "git fetch --refetch failed in {}: {}",
+            path.display(),
+            stderr
+        );
     }
 
     Ok(())
