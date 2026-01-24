@@ -165,6 +165,30 @@ begin_test "wald plant fails if baum already planted"
     teardown_wald_workspace
 end_test
 
+begin_test "wald plant warns for partial clone"
+    setup_wald_workspace
+
+    # Create bare repo and mark it as partial clone
+    create_bare_repo "github.com/test/repo" "with_commits"
+    add_repo_to_manifest "github.com/test/repo"
+
+    # Mark as partial clone
+    _bare_path=$(get_bare_repo_path "github.com/test/repo")
+    git -C "$_bare_path" config remote.origin.promisor true
+    git -C "$_bare_path" config remote.origin.partialclonefilter "blob:none"
+
+    # Plant should warn about partial clone
+    _result=$($WALD_BIN plant "github.com/test/repo" "tools/repo" main 2>&1)
+    assert_contains "$_result" "partial clone"
+    assert_contains "$_result" "Network"
+
+    # Plant should still succeed
+    assert_dir_exists "tools/repo/.baum"
+    assert_worktree_exists "tools/repo/_main.wt"
+
+    teardown_wald_workspace
+end_test
+
 # Print summary if running standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     print_summary

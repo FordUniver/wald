@@ -71,6 +71,66 @@ begin_test "wald repo add with upstream"
 end_test
 
 # ====================================================================================
+# Filter policy tests
+# ====================================================================================
+
+begin_test "wald repo add with --filter=none"
+    setup_wald_workspace
+
+    $WALD_BIN repo add --no-clone --filter=none github.com/test/full-clone
+
+    assert_file_contains ".wald/manifest.yaml" "github.com/test/full-clone"
+    assert_file_contains ".wald/manifest.yaml" "filter: none"
+
+    teardown_wald_workspace
+end_test
+
+begin_test "wald repo add with --filter=blob-none"
+    setup_wald_workspace
+
+    $WALD_BIN repo add --no-clone --filter=blob-none github.com/test/blobless
+
+    assert_file_contains ".wald/manifest.yaml" "github.com/test/blobless"
+    assert_file_contains ".wald/manifest.yaml" "filter: blob-none"
+
+    teardown_wald_workspace
+end_test
+
+begin_test "wald repo add with --filter=tree-0"
+    setup_wald_workspace
+
+    $WALD_BIN repo add --no-clone --filter=tree-0 github.com/test/treeless
+
+    assert_file_contains ".wald/manifest.yaml" "github.com/test/treeless"
+    assert_file_contains ".wald/manifest.yaml" "filter: tree-zero"
+
+    teardown_wald_workspace
+end_test
+
+begin_test "wald repo add defaults to blob-none filter"
+    setup_wald_workspace
+
+    # Add without explicit filter - should use default from config
+    $WALD_BIN repo add --no-clone github.com/test/default-filter
+
+    assert_file_contains ".wald/manifest.yaml" "github.com/test/default-filter"
+    # Default is now blob-none
+    assert_file_contains ".wald/manifest.yaml" "filter: blob-none"
+
+    teardown_wald_workspace
+end_test
+
+begin_test "wald repo add rejects invalid filter"
+    setup_wald_workspace
+
+    # Try invalid filter
+    _result=$($WALD_BIN repo add --no-clone --filter=invalid github.com/test/repo 2>&1 || true)
+    assert_contains "$_result" "Invalid filter"
+
+    teardown_wald_workspace
+end_test
+
+# ====================================================================================
 # Error cases
 # ====================================================================================
 

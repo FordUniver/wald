@@ -55,6 +55,7 @@ EOF
     cat > .wald/config.yaml <<EOF
 default_lfs: minimal
 default_depth: 100
+default_filter: blob-none
 EOF
 
     # Create state.yaml
