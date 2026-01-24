@@ -32,13 +32,15 @@ variables:
 # Build release binary for testing and dev releases
 build:
   stage: build
-  image: rust:${RUST_VERSION}
+  image: rust:${RUST_VERSION}-alpine
   script:
-    - cargo build --release
-    - ./target/release/wald --version
+    - apk add --no-cache musl-dev
+    - rustup target add x86_64-unknown-linux-musl
+    - cargo build --release --target x86_64-unknown-linux-musl
+    - ./target/x86_64-unknown-linux-musl/release/wald --version
   artifacts:
     paths:
-      - target/release/wald
+      - target/x86_64-unknown-linux-musl/release/wald
     expire_in: 1 day
   cache:
     key: cargo-build-${CI_COMMIT_REF_SLUG}
@@ -110,7 +112,7 @@ lint:clippy:
 test:integration:
   stage: test
   needs: [build]
-  image: debian:trixie-slim
+  image: debian:bookworm-slim
   before_script:
     - apt-get update
     - apt-get install -y git git-lfs jq wget ca-certificates
@@ -122,8 +124,8 @@ test:integration:
     - git config --global pull.rebase true
     - git config --global rebase.autoStash true
   script:
-    - ./target/release/wald --version
-    - cd test && DEBUG=1 bash run_tests.sh ../target/release/wald
+    - ./target/x86_64-unknown-linux-musl/release/wald --version
+    - cd test && DEBUG=1 bash run_tests.sh ../target/x86_64-unknown-linux-musl/release/wald
   artifacts:
     when: on_failure
     paths:
