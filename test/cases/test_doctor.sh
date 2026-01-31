@@ -166,6 +166,55 @@ EOF
     teardown_wald_workspace
 end_test
 
+begin_test "wald doctor handles moved baums correctly (symlink path canonicalization)"
+    setup_wald_workspace
+
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
+
+    # Move baum
+    $WALD_BIN move tools/repo admin/repo
+
+    # Doctor should find no issues (paths should match after canonicalization)
+    _result=$($WALD_BIN doctor 2>&1)
+
+    assert_contains "$_result" "No issues found"
+    assert_not_contains "$_result" "not in git's list"
+
+    teardown_wald_workspace
+end_test
+
+begin_test "wald doctor --fix repairs worktree registry"
+    setup_wald_workspace
+
+    create_bare_repo "github.com/test/repo" "with_commits"
+    $WALD_BIN repo add "github.com/test/repo"
+    $WALD_BIN plant "github.com/test/repo" "tools/repo" main
+
+    # Get bare repo path
+    local bare_path
+    bare_path=$(get_bare_repo_path "github.com/test/repo")
+
+    # Manually corrupt the worktree registry by removing it
+    # This simulates a broken worktree that git worktree repair can fix
+    rm -rf "$bare_path/worktrees"
+
+    # Doctor should detect the issue
+    _result=$($WALD_BIN doctor 2>&1)
+    assert_contains "$_result" "not in git's list"
+
+    # Doctor --fix should repair it
+    _result=$($WALD_BIN doctor --fix 2>&1)
+    assert_contains "$_result" "Fixed"
+
+    # Verify the worktree is now in git's list
+    _list=$(git -C "$bare_path" worktree list)
+    assert_contains "$_list" "_main.wt"
+
+    teardown_wald_workspace
+end_test
+
 # Print summary if running standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     print_summary

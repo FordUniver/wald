@@ -59,16 +59,61 @@ pub fn validate_workspace_path(root: &Path, path: &Path) -> Result<PathBuf> {
     };
 
     // Verify the resolved path is within the workspace
-    let canonical_root = normalize_path(root);
-    if !resolved.starts_with(&canonical_root) {
+    // Canonicalize root to handle symlinks (e.g., /tmp -> /private/tmp on macOS)
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| normalize_path(root));
+
+    // For the resolved path, canonicalize what exists
+    let canonical_resolved = canonicalize_partial(&resolved);
+
+    if !canonical_resolved.starts_with(&canonical_root) {
         bail!(
             "path escapes workspace root: {} is not under {}",
-            resolved.display(),
+            canonical_resolved.display(),
             canonical_root.display()
         );
     }
 
     Ok(resolved)
+}
+
+/// Canonicalize as much of a path as exists.
+///
+/// For paths where only part exists (e.g., `/existing/dir/new_file`),
+/// canonicalizes the existing prefix and appends the rest.
+fn canonicalize_partial(path: &Path) -> PathBuf {
+    // First, try full canonicalization
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+
+    // Find the longest existing prefix and canonicalize that
+    let mut existing = path.to_path_buf();
+    let mut suffix_components = Vec::new();
+
+    while !existing.as_os_str().is_empty() {
+        if existing.exists() {
+            break;
+        }
+        if let Some(file_name) = existing.file_name() {
+            suffix_components.push(file_name.to_owned());
+        }
+        if !existing.pop() {
+            break;
+        }
+    }
+
+    // Canonicalize the existing prefix
+    let canonical_prefix = existing
+        .canonicalize()
+        .unwrap_or_else(|_| normalize_path(&existing));
+
+    // Rebuild with canonicalized prefix + remaining components
+    let mut result = canonical_prefix;
+    for component in suffix_components.into_iter().rev() {
+        result.push(component);
+    }
+
+    result
 }
 
 /// Normalize a path by resolving `.` and `..` components without requiring the path to exist.
@@ -217,5 +262,65 @@ mod tests {
         let result = validate_workspace_path(dir.path(), Path::new("tools/repo"));
         assert!(result.is_ok());
         assert!(result.unwrap().starts_with(dir.path()));
+    }
+
+    #[test]
+    fn test_symlinked_workspace_root() {
+        // This test verifies the fix for symlinked workspace roots
+        // On macOS, /tmp is a symlink to /private/tmp
+        // Skip on platforms where /tmp isn't a symlink
+        if !Path::new("/tmp").is_symlink() {
+            return;
+        }
+
+        // Create workspace in /tmp (which is symlinked)
+        let dir = TempDir::new_in("/tmp").unwrap();
+        // Use the raw path (non-canonical, through /tmp)
+        let raw_root = dir.path();
+        // The canonical path goes through /private/tmp
+        let canonical_root = raw_root.canonicalize().unwrap();
+
+        // Verify they differ (test precondition)
+        assert_ne!(
+            raw_root.to_string_lossy().as_ref(),
+            canonical_root.to_string_lossy().as_ref(),
+            "Paths should differ for this test to be meaningful"
+        );
+
+        // Using raw (symlinked) root should still work
+        let result = validate_workspace_path(raw_root, Path::new("tools/repo"));
+        assert!(
+            result.is_ok(),
+            "validation should succeed with symlinked root"
+        );
+
+        // The result should be usable (path within workspace)
+        let resolved = result.unwrap();
+        assert!(
+            resolved.starts_with(raw_root) || resolved.starts_with(&canonical_root),
+            "resolved path should be within workspace"
+        );
+    }
+
+    #[test]
+    fn test_canonicalize_partial() {
+        let dir = TempDir::new().unwrap();
+        let existing = dir.path().join("existing");
+        fs::create_dir(&existing).unwrap();
+
+        // Path where only prefix exists
+        let partial = existing.join("new_dir/new_file.txt");
+        let result = canonicalize_partial(&partial);
+
+        // Should have canonicalized the existing part
+        let expected_prefix = existing.canonicalize().unwrap();
+        assert!(
+            result.starts_with(&expected_prefix),
+            "should canonicalize existing prefix"
+        );
+        assert!(
+            result.ends_with("new_dir/new_file.txt"),
+            "should preserve non-existing suffix"
+        );
     }
 }

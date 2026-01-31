@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use walkdir::WalkDir;
@@ -218,12 +218,15 @@ fn check_baum(
             }
 
             // Check worktree is in git's list
-            let wt_path_str = wt_path.to_string_lossy();
-            if !worktree_list.iter().any(|w| w.path == wt_path_str) {
+            // Use paths_equal to handle symlinks (e.g., /tmp -> /private/tmp on macOS)
+            if !worktree_list.iter().any(|w| paths_equal(&wt_path, &w.path)) {
                 issues.push(Issue {
                     severity: Severity::Warning,
                     message: format!("Worktree not in git's list: {}", wt_path.display()),
-                    fix: None,
+                    fix: Some(FixAction::RepairWorktree(
+                        bare_path.clone(),
+                        wt_path.clone(),
+                    )),
                 });
             }
         }
@@ -246,6 +249,7 @@ struct Issue {
 
 enum FixAction {
     CreateDir(PathBuf),
+    RepairWorktree(PathBuf, PathBuf), // (bare_repo_path, worktree_path)
 }
 
 fn apply_fix(fix: &FixAction) -> Result<()> {
@@ -254,5 +258,98 @@ fn apply_fix(fix: &FixAction) -> Result<()> {
             std::fs::create_dir_all(path)?;
             Ok(())
         }
+        FixAction::RepairWorktree(bare_repo, worktree_path) => {
+            use std::process::Command;
+
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(bare_repo)
+                .arg("worktree")
+                .arg("repair")
+                .arg(worktree_path)
+                .output()?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("git worktree repair failed: {}", stderr.trim());
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Compare two paths for equality, handling symlinks.
+///
+/// On macOS, /tmp is a symlink to /private/tmp. Git commands return
+/// canonicalized paths, but paths constructed from baum manifests may not be.
+/// This function canonicalizes both paths before comparing.
+fn paths_equal(a: &Path, b: &str) -> bool {
+    let b_path = Path::new(b);
+
+    // Try to canonicalize both paths
+    match (a.canonicalize(), b_path.canonicalize()) {
+        (Ok(a_canon), Ok(b_canon)) => a_canon == b_canon,
+        // If canonicalization fails (path doesn't exist), fall back to string comparison
+        _ => a.to_string_lossy() == b,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_paths_equal_identical() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.txt");
+        fs::write(&path, "test").unwrap();
+
+        assert!(paths_equal(&path, path.to_str().unwrap()));
+    }
+
+    #[test]
+    fn test_paths_equal_with_symlink() {
+        // This test reproduces the macOS /tmp -> /private/tmp issue
+        // On macOS, /tmp is a symlink to /private/tmp
+        // Skip on platforms where /tmp isn't a symlink
+        if !Path::new("/tmp").is_symlink() {
+            return;
+        }
+
+        let dir = TempDir::new_in("/tmp").unwrap();
+        let file = dir.path().join("test.txt");
+        fs::write(&file, "test").unwrap();
+
+        // Get the path through /tmp (non-canonical)
+        let tmp_path = file.clone();
+
+        // Get the canonical path (through /private/tmp on macOS)
+        let canonical_path = file.canonicalize().unwrap();
+
+        // These should be considered equal even though strings differ
+        assert_ne!(
+            tmp_path.to_string_lossy().as_ref(),
+            canonical_path.to_string_lossy().as_ref(),
+            "Paths should differ as strings for this test to be meaningful"
+        );
+
+        assert!(
+            paths_equal(&tmp_path, canonical_path.to_str().unwrap()),
+            "paths_equal should handle symlinks"
+        );
+        assert!(
+            paths_equal(&canonical_path, tmp_path.to_str().unwrap()),
+            "paths_equal should be symmetric"
+        );
+    }
+
+    #[test]
+    fn test_paths_equal_nonexistent() {
+        // For non-existent paths, fall back to string comparison
+        let path = PathBuf::from("/nonexistent/path/file.txt");
+        assert!(paths_equal(&path, "/nonexistent/path/file.txt"));
+        assert!(!paths_equal(&path, "/different/path/file.txt"));
     }
 }
