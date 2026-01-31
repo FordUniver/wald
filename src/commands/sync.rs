@@ -3,17 +3,20 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
+use crate::git;
 use crate::git::history::detect_moves;
 use crate::git::shell::get_head_commit;
 use crate::output::Output;
+use crate::types::{DepthPolicy, RepoId};
 use crate::workspace::baum::load_baum;
-use crate::workspace::{Workspace, is_baum};
+use crate::workspace::{Workspace, find_all_baums, is_baum};
 
 /// Options for sync command
 pub struct SyncOptions {
     pub dry_run: bool,
     pub force: bool,
     pub push: bool,
+    pub offline: bool,
 }
 
 /// Sync workspace with remote, replaying moves
@@ -119,6 +122,11 @@ pub fn sync(ws: &mut Workspace, opts: SyncOptions, out: &Output) -> Result<()> {
                 replay_move(ws, &mv.old_path, &mv.new_path, out)?;
             }
         }
+    }
+
+    // Clone missing repos (unless offline mode)
+    if !opts.offline && !opts.dry_run {
+        clone_missing_repos(ws, out)?;
     }
 
     // Push if requested
@@ -315,4 +323,46 @@ fn get_ahead_behind(repo_path: &std::path::Path) -> Result<(u32, u32)> {
             Ok((0, 0))
         }
     }
+}
+
+/// Clone missing bare repos referenced by baums in the workspace
+fn clone_missing_repos(ws: &Workspace, out: &Output) -> Result<()> {
+    // Discover all baums
+    let baums = find_all_baums(&ws.root);
+
+    // Collect unique repo_ids that are missing
+    let mut missing: Vec<(String, &crate::types::RepoEntry)> = Vec::new();
+    for (_path, manifest) in &baums {
+        let repo_id = &manifest.repo_id;
+        if !ws.has_bare_repo(repo_id)
+            && let Some(entry) = ws.manifest.repos.get(repo_id)
+            && !missing.iter().any(|(id, _)| id == repo_id)
+        {
+            missing.push((repo_id.clone(), entry));
+        }
+    }
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    // Clone each with registered policies
+    out.info(&format!("Cloning {} missing repo(s)...", missing.len()));
+    for (repo_id, entry) in missing {
+        let id = RepoId::parse(&repo_id)?;
+        let bare_path = ws.repos_dir().join(id.to_bare_path());
+
+        let clone_opts = git::CloneOptions {
+            depth: match &entry.depth {
+                DepthPolicy::Full => None,
+                DepthPolicy::Depth(d) => Some(*d),
+            },
+            filter: entry.filter.as_git_arg().map(|s| s.to_string()),
+        };
+
+        out.status("Cloning", &repo_id);
+        git::clone_bare(&id, &bare_path, clone_opts)?;
+    }
+
+    Ok(())
 }

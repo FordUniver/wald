@@ -1,4 +1,5 @@
 pub mod branch;
+pub mod clone;
 pub mod doctor;
 pub mod init;
 pub mod move_cmd;
@@ -11,6 +12,7 @@ pub mod uproot;
 pub mod worktrees;
 
 pub use branch::branch;
+pub use clone::clone;
 pub use doctor::doctor;
 pub use init::init;
 pub use move_cmd::move_baum;

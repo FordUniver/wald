@@ -43,6 +43,16 @@ enum Commands {
         no_git: bool,
     },
 
+    /// Clone a wald workspace and hydrate all repos
+    Clone {
+        /// Repository URL to clone
+        url: String,
+
+        /// Target directory (defaults to repo name)
+        #[arg(value_name = "DIR")]
+        dir: Option<PathBuf>,
+    },
+
     /// Manage repository registry
     Repo {
         #[command(subcommand)]
@@ -147,6 +157,10 @@ enum Commands {
         /// Push changes after syncing
         #[arg(long)]
         push: bool,
+
+        /// Skip cloning missing repos (metadata sync only)
+        #[arg(long)]
+        offline: bool,
     },
 
     /// Show workspace status
@@ -300,6 +314,13 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             };
             return commands::init(opts, out);
         }
+        Commands::Clone { url, dir } => {
+            let opts = commands::clone::CloneOptions {
+                url: url.clone(),
+                dir: dir.clone(),
+            };
+            return commands::clone(opts, out);
+        }
         _ => {}
     }
 
@@ -415,11 +436,13 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
             dry_run,
             force,
             push,
+            offline,
         } => {
             let opts = commands::sync::SyncOptions {
                 dry_run,
                 force,
                 push,
+                offline,
             };
             commands::sync(&mut ws, opts, out)
         }
@@ -432,6 +455,7 @@ fn run(cli: Cli, out: &Output) -> anyhow::Result<()> {
         }
 
         Commands::Init { .. } => unreachable!(),
+        Commands::Clone { .. } => unreachable!(),
         Commands::Completion { .. } => unreachable!(),
     }
 }
