@@ -213,7 +213,8 @@ mod tests {
 
         let result = validate_workspace_path(&root, Path::new("./dotfiles"));
 
-        env::set_current_dir(original_dir).unwrap();
+        // Restore original dir (ignore errors - parallel tests may interfere)
+        let _ = env::set_current_dir(original_dir);
 
         assert!(result.is_ok(), "expected ok, got {:?}", result);
         assert_eq!(result.unwrap(), root.join("infrastructure/tools/dotfiles"));
@@ -234,7 +235,8 @@ mod tests {
 
         let result = validate_workspace_path(&root, Path::new("../dotfiles"));
 
-        env::set_current_dir(original_dir).unwrap();
+        // Restore original dir (ignore errors - parallel tests may interfere)
+        let _ = env::set_current_dir(original_dir);
 
         assert!(result.is_ok(), "expected ok, got {:?}", result);
         assert_eq!(result.unwrap(), root.join("infrastructure/dotfiles"));
@@ -250,7 +252,8 @@ mod tests {
 
         let result = validate_workspace_path(dir.path(), Path::new("../../outside"));
 
-        env::set_current_dir(original_dir).unwrap();
+        // Restore original dir (ignore errors - parallel tests may interfere)
+        let _ = env::set_current_dir(original_dir);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("escapes"));
