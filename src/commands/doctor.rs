@@ -258,15 +258,17 @@ fn apply_fix(fix: &FixAction) -> Result<()> {
             std::fs::create_dir_all(path)?;
             Ok(())
         }
-        FixAction::RepairWorktree(bare_repo, worktree_path) => {
+        FixAction::RepairWorktree(_bare_repo, worktree_path) => {
             use std::process::Command;
 
+            // Run repair FROM the worktree directory. This handles both cases:
+            // 1. Registry has stale path (repair updates it)
+            // 2. Registry entry is missing (repair re-registers the worktree)
             let output = Command::new("git")
                 .arg("-C")
-                .arg(bare_repo)
+                .arg(worktree_path)
                 .arg("worktree")
                 .arg("repair")
-                .arg(worktree_path)
                 .output()?;
 
             if !output.status.success() {

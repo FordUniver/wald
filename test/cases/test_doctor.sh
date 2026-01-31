@@ -185,7 +185,7 @@ begin_test "wald doctor handles moved baums correctly (symlink path canonicaliza
     teardown_wald_workspace
 end_test
 
-begin_test "wald doctor --fix repairs worktree registry"
+begin_test "wald doctor --fix repairs worktree registry after manual move"
     setup_wald_workspace
 
     create_bare_repo "github.com/test/repo" "with_commits"
@@ -193,24 +193,31 @@ begin_test "wald doctor --fix repairs worktree registry"
     $WALD_BIN plant "github.com/test/repo" "tools/repo" main
 
     # Get bare repo path
-    local bare_path
     bare_path=$(get_bare_repo_path "github.com/test/repo")
 
-    # Manually corrupt the worktree registry by removing it
-    # This simulates a broken worktree that git worktree repair can fix
-    rm -rf "$bare_path/worktrees"
+    # Verify initial state is healthy
+    _result=$($WALD_BIN doctor 2>&1)
+    assert_contains "$_result" "No issues found"
 
-    # Doctor should detect the issue
+    # Manually move the worktree without using wald mv
+    # This breaks the worktree registry paths
+    mkdir -p admin/repo
+    mv tools/repo/.baum admin/repo/
+    mv tools/repo/_main.wt admin/repo/
+    # Clean up tools directory (may have .gitignore and other files)
+    rm -rf tools
+
+    # Doctor should detect the issue (path mismatch)
     _result=$($WALD_BIN doctor 2>&1)
     assert_contains "$_result" "not in git's list"
 
-    # Doctor --fix should repair it
+    # Doctor --fix should repair it using git worktree repair
     _result=$($WALD_BIN doctor --fix 2>&1)
     assert_contains "$_result" "Fixed"
 
-    # Verify the worktree is now in git's list
+    # Verify the worktree is now registered at the new path
     _list=$(git -C "$bare_path" worktree list)
-    assert_contains "$_list" "_main.wt"
+    assert_contains "$_list" "admin/repo/_main.wt"
 
     teardown_wald_workspace
 end_test
