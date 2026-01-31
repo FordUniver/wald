@@ -142,7 +142,12 @@ fn normalize_path(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Mutex to serialize tests that change the process-global current directory.
+    // env::set_current_dir affects ALL threads, so cwd-dependent tests must not run in parallel.
+    static CWD_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_valid_simple_path() {
@@ -200,6 +205,8 @@ mod tests {
 
     #[test]
     fn test_cwd_relative_path() {
+        let _lock = CWD_MUTEX.lock().unwrap();
+
         // Create workspace structure
         let dir = TempDir::new().unwrap();
         // Canonicalize to handle macOS /tmp -> /private/tmp symlink
@@ -222,6 +229,8 @@ mod tests {
 
     #[test]
     fn test_cwd_relative_parent() {
+        let _lock = CWD_MUTEX.lock().unwrap();
+
         // Create workspace structure
         let dir = TempDir::new().unwrap();
         // Canonicalize to handle macOS /tmp -> /private/tmp symlink
@@ -244,6 +253,8 @@ mod tests {
 
     #[test]
     fn test_cwd_relative_escapes_workspace() {
+        let _lock = CWD_MUTEX.lock().unwrap();
+
         let dir = TempDir::new().unwrap();
 
         // Change to workspace root and use ../../outside
