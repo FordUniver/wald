@@ -517,7 +517,7 @@ parse_repo_id() {
 
     REPO_HOST="${parts[0]}"
     REPO_PATH=("${parts[@]:1}")
-    REPO_NAME="${parts[-1]}"
+    REPO_NAME="${parts[${#parts[@]}-1]}"
 
     # Verify no empty segments
     for part in "${parts[@]}"; do
